@@ -26,31 +26,54 @@ async function supabaseQuery(table, method = "GET", body = null, query = "") {
 // ============================================================
 // FACEIO HELPER - Uses your Public ID fioa9051
 // ============================================================
+// FACEIO HELPER
+// ============================================================
 const FACEIO_PUBLIC_ID = "fioa9051";
 let faceioInstance = null;
+let faceioScriptLoaded = false;
 
-function getFaceIO() {
-  if (faceioInstance) return faceioInstance;
-  if (window.faceIO) {
-    faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
-    return faceioInstance;
-  }
-  return null;
+function loadFaceIOScript() {
+  return new Promise((resolve, reject) => {
+    if (faceioScriptLoaded && window.faceIO) { resolve(); return; }
+    // Remove any existing faceio script first
+    const existing = document.getElementById("faceio-script");
+    if (existing) existing.remove();
+    // Also ensure modal div exists
+    if (!document.getElementById("faceio-modal")) {
+      const modal = document.createElement("div");
+      modal.id = "faceio-modal";
+      document.body.appendChild(modal);
+    }
+    const script = document.createElement("script");
+    script.id = "faceio-script";
+    script.src = "https://cdn.faceio.net/fio.js";
+    script.async = true;
+    script.onload = () => { faceioScriptLoaded = true; resolve(); };
+    script.onerror = () => reject(new Error("Failed to load FaceIO script. Check your internet connection."));
+    document.body.appendChild(script);
+  });
 }
 
-function waitForFaceIO(retries = 20, delay = 300) {
-  return new Promise((resolve, reject) => {
-    const attempt = (n) => {
-      if (window.faceIO) {
-        if (!faceioInstance) faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
-        resolve(faceioInstance);
-      } else if (n <= 0) {
-        reject(new Error("FaceIO SDK not loaded. Please refresh the page."));
-      } else {
-        setTimeout(() => attempt(n - 1), delay);
-      }
-    };
-    attempt(retries);
+function waitForFaceIO() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (faceioInstance) { resolve(faceioInstance); return; }
+      await loadFaceIOScript();
+      // Wait up to 5 seconds for window.faceIO to be ready
+      let tries = 50;
+      const check = setInterval(() => {
+        if (window.faceIO) {
+          clearInterval(check);
+          try {
+            if (!faceioInstance) faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
+            resolve(faceioInstance);
+          } catch(e) { reject(e); }
+        } else if (--tries <= 0) {
+          clearInterval(check);
+          reject(new Error("FaceIO failed to initialize. Please refresh and try again."));
+        }
+      }, 100);
+    } catch(e) { reject(e); }
   });
 }
 
