@@ -40,8 +40,45 @@ function getGPS() {
 }
 
 // ============================================================
-// CAMERA PHOTO
+// FACEIO
 // ============================================================
+const FACEIO_PUBLIC_ID = "fioa9051";
+let faceioInstance = null;
+
+async function getFaceIO() {
+  if (faceioInstance) return faceioInstance;
+  return new Promise((resolve, reject) => {
+    let tries = 50;
+    const check = setInterval(() => {
+      tries--;
+      if (window.faceIO) {
+        clearInterval(check);
+        try {
+          faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
+          resolve(faceioInstance);
+        } catch (e) { faceioInstance = null; reject(e); }
+      } else if (tries <= 0) {
+        clearInterval(check);
+        reject(new Error("FaceIO not loaded"));
+      }
+    }, 100);
+  });
+}
+
+async function verifyFace() {
+  const fio = await getFaceIO();
+  const enrolled = localStorage.getItem("faceio_enrolled_" + FACEIO_PUBLIC_ID);
+  if (!enrolled) {
+    // First time — enroll face
+    const result = await fio.enroll({ locale: "auto", payload: { name: "Ahmed Kardous" } });
+    localStorage.setItem("faceio_enrolled_" + FACEIO_PUBLIC_ID, result.facialId);
+    return { facialId: result.facialId, enrolled: true };
+  } else {
+    // Returning — authenticate
+    const result = await fio.authenticate({ locale: "auto" });
+    return { facialId: result.facialId, enrolled: false };
+  }
+}
 function takePhoto() {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -175,8 +212,8 @@ const css = `
   .verify-step.error{background:var(--errb)}.verify-step.success{background:var(--okb)}
   .verify-icon{font-size:16px;flex-shrink:0}
   .gps-coords{font-size:11px;color:var(--t3);margin-top:4px}
-  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto}
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:1000;padding:40px 20px;overflow-y:auto}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:560px;max-width:100%;margin:auto;}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
   .modal-title{font-size:18px;font-weight:700}
   .form-group{margin-bottom:16px}
@@ -424,13 +461,19 @@ export default function App() {
       setGpsErr(e.message); setVerifying(null); return;
     }
 
-    // Step 2: Camera Photo
+    // Step 2: FaceIO Face Verification
     setVerifying("photo");
+    let facialId = null;
     try {
-      const p = await takePhoto();
-      setPhoto(p); setPhotoOk(true);
+      const faceResult = await verifyFace();
+      facialId = faceResult.facialId;
+      setPhotoOk(true);
     } catch (e) {
-      setPhotoErr(T("Camera denied. Please allow camera access.", "تم رفض الكاميرا. يرجى السماح بالوصول.")); setVerifying(null); return;
+      const code = e.code !== undefined ? e.code : e.message || String(e);
+      setPhotoErr(`Face verification failed (${code}). Please try again.`);
+      setVerifying(null);
+      faceioInstance = null;
+      return;
     }
 
     // Step 3: Location check
@@ -439,14 +482,14 @@ export default function App() {
     const clockTime = new Date();
 
     if (isOffice) {
-      await doSaveClockIn(clockTime, loc, T("Office", "المكتب"), photo);
+      await doSaveClockIn(clockTime, loc, T("Office", "المكتب"), facialId);
     } else {
       setPendingLoc(loc); setPendingTime(clockTime);
       setShowLocModal(true); setVerifying(null);
     }
   };
 
-  const doSaveClockIn = async (clockTime, loc, label, p) => {
+  const doSaveClockIn = async (clockTime, loc, label, facialId) => {
     setVerifying("saving");
     const empId = employees[0]?.id || null;
     const isLate = clockTime.getHours() > 8 || (clockTime.getHours() === 8 && clockTime.getMinutes() > 15);
@@ -456,7 +499,7 @@ export default function App() {
       check_in: clockTime.toISOString(),
       gps_lat: loc?.lat, gps_lng: loc?.lng,
       location_label: label,
-      face_photo: p || photo,
+      face_photo: facialId ? `face_verified:${facialId}` : null,
       status: isLate ? "late" : "present",
       source: "app",
     });
@@ -771,13 +814,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Photo Step */}
+                  {/* Face ID Step */}
                   <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
                     <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
                     <div style={{ flex: 1, textAlign: "left" }}>
-                      <div>{photoOk ? T("Photo Captured ✓", "تم التقاط الصورة ✓") : photoErr ? T("Camera Error", "خطأ الكاميرا") : T("Face Photo", "صورة الوجه")}</div>
+                      <div>{photoOk ? T("Face ID Verified ✓", "تم التحقق من الوجه ✓") : photoErr ? T("Face ID Error", "خطأ Face ID") : verifying === "photo" ? T("Scanning face...", "جاري مسح الوجه...") : T("Face ID Verification", "التحقق من الوجه")}</div>
                       {photoErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{photoErr}</div>}
-                      {photo && <img src={photo} alt="you" style={{ width: 64, height: 48, borderRadius: 6, marginTop: 6, objectFit: "cover", border: "1px solid var(--ok)" }} />}
+                      {photoOk && <div className="gps-coords" style={{ color: "var(--ok)" }}>🎯 {T("Identity confirmed", "تم تأكيد الهوية")}</div>}
                     </div>
                   </div>
                 </div>
@@ -818,7 +861,7 @@ export default function App() {
               <div className="form-actions">
                 <Btn color="primary" disabled={!customLoc || saving} onClick={async () => {
                   setShowLocModal(false);
-                  await doSaveClockIn(pendingTime, pendingLoc, customLoc, photo);
+                  await doSaveClockIn(pendingTime, pendingLoc, customLoc, null);
                   setCustomLoc("");
                 }}>{saving ? <span className="spinner" /> : T("✅ Confirm & Clock In", "✅ تأكيد وتسجيل الدخول")}</Btn>
               </div>
@@ -1297,6 +1340,9 @@ export default function App() {
 
             {/* Pending Loans */}
             <div className="card-title" style={{ margin: "24px 0 16px" }}>💳 {T("Pending Loan Requests", "طلبات القروض المعلقة")} ({pendingLn.length})</div>
+            <div className="info-box" style={{ borderColor: "var(--info)", background: "var(--infob)" }}>
+              ℹ️ {T("When you approve a loan, the employee receives the amount. The monthly deduction will be automatically applied to their payroll.", "عند الموافقة على القرض، يتلقى الموظف المبلغ. سيتم تطبيق الخصم الشهري تلقائياً على راتبه.")}
+            </div>
             {pendingLn.length === 0
               ? <div className="info-box">{T("No pending loan requests", "لا توجد طلبات قروض معلقة")}</div>
               : pendingLn.map((ln, i) => {
@@ -1305,11 +1351,19 @@ export default function App() {
                   <div className="req-card" key={i}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{emp?.name} — {Number(ln.amount).toLocaleString()} EGP</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{Number(ln.monthly_deduction).toLocaleString()} EGP/{T("month", "شهر")} · {ln.reason}</div>
+                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>📅 {T("Start", "بداية")}: {ln.start_date}</div>
+                      <div style={{ fontSize: 13, color: "var(--t3)" }}>💸 {Number(ln.monthly_deduction).toLocaleString()} EGP/{T("month", "شهر")} · ~{Math.ceil(ln.amount / ln.monthly_deduction)} {T("months", "أشهر")}</div>
+                      <div style={{ fontSize: 13, color: "var(--t3)" }}>📝 {ln.reason}</div>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Btn size="sm" color="success" onClick={async () => { await db("loans", "PATCH", { status: "active" }, `?id=eq.${ln.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
-                      <Btn size="sm" color="danger" onClick={async () => { await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <Btn size="sm" color="success" onClick={async () => {
+                        await db("loans", "PATCH", { status: "active", approved_by: "Ahmed Kardous" }, `?id=eq.${ln.id}`);
+                        loadAll();
+                      }}>✅ {T("Approve & Activate", "موافقة وتفعيل")}</Btn>
+                      <Btn size="sm" color="danger" onClick={async () => {
+                        await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`);
+                        loadAll();
+                      }}>❌ {T("Reject", "رفض")}</Btn>
                     </div>
                   </div>
                 );
