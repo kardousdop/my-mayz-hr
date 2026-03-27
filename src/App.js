@@ -910,7 +910,7 @@ export default function App() {
               <span className={`badge ${loan.status === "active" ? "yellow" : "green"}`}>{loan.status}</span>
             </div>
             {loan.status === "active" && (
-              <div style={{ marginTop: 12, display: "flex", gap: 8" }}>
+              <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                 <button className="btn btn-outline btn-sm" onClick={async () => {
                   const newRemaining = Math.max(0, loan.remaining - loan.monthly_deduction);
                   const newStatus = newRemaining <= 0 ? "settled" : "active";
