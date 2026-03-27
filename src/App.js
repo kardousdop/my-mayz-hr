@@ -396,6 +396,11 @@ export default function App() {
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
   const [reportFilter, setReportFilter] = useState({ from: "", to: "", emp: "" });
+  const [clockOutVerifying, setClockOutVerifying] = useState(false);
+  const [clockOutGpsOk, setClockOutGpsOk] = useState(false);
+  const [clockOutPhotoOk, setClockOutPhotoOk] = useState(false);
+  const [clockOutPhoto, setClockOutPhoto] = useState(null);
+  const [clockOutDone, setClockOutDone] = useState(false);
 
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
@@ -489,18 +494,24 @@ export default function App() {
   };
 
   const handleClockOut = async () => {
+    setClockOutVerifying(true);
+    setClockOutGpsOk(false);
+    setClockOutPhotoOk(false);
+    setClockOutPhoto(null);
+    setClockOutDone(false);
+
+    // GPS
+    let outLoc = null;
+    try { outLoc = await getGPS(); setClockOutGpsOk(true); } catch(e) {}
+
+    // Camera
+    let outPhoto = null;
+    try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
+
+    // Save
     const clockTime = new Date();
     const today = clockTime.toISOString().split("T")[0];
     const empId = employees[0]?.id;
-
-    // Get GPS on clock out
-    let outLoc = null;
-    try { outLoc = await getGPS(); } catch(e) {}
-
-    // Take photo on clock out
-    let outPhoto = null;
-    try { outPhoto = await capturePhoto(); } catch(e) {}
-
     const rec = attendance.find(a => a.date === today && a.employee_id === empId && !a.check_out);
     if (rec) {
       const hours = Math.round(((clockTime - new Date(rec.check_in)) / 3600000) * 100) / 100;
@@ -513,6 +524,7 @@ export default function App() {
       }, `?id=eq.${rec.id}`);
     }
     setClockedIn(false); setClockInTime(null); setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
+    setClockOutVerifying(false); setClockOutDone(true);
     await loadAll();
   };
 
@@ -830,10 +842,32 @@ export default function App() {
                 <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Clock Out", "تسجيل الخروج")}</div>
                 <div className="clock-time">{timeStr}</div>
                 <div className="clock-date">{dateStr}</div>
-                <button className="clock-btn out" onClick={handleClockOut} disabled={!clockedIn}>{T("Clock Out", "تسجيل الخروج")}</button>
-                {clockedIn && clockInTime && (
-                  <div style={{ marginTop: 16, color: "var(--t2)", fontSize: 13 }}>
+                {!clockOutDone
+                  ? <button className="clock-btn out" onClick={handleClockOut} disabled={!clockedIn || clockOutVerifying}>
+                      {clockOutVerifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Clock Out", "تسجيل الخروج")}
+                    </button>
+                  : <div style={{ color: "var(--err)", fontWeight: 600, fontSize: 15 }}>✅ {T("Clocked out successfully", "تم تسجيل الخروج بنجاح")}</div>
+                }
+                {clockedIn && clockInTime && !clockOutDone && (
+                  <div style={{ marginTop: 12, color: "var(--t2)", fontSize: 13 }}>
                     ⏱️ {T("Duration", "المدة")}: {Math.floor((now - clockInTime) / 3600000)}h {Math.floor(((now - clockInTime) % 3600000) / 60000)}m
+                  </div>
+                )}
+                {(clockOutVerifying || clockOutDone) && (
+                  <div className="verify-steps">
+                    <div className={`verify-step ${clockOutGpsOk ? "success" : clockOutVerifying && !clockOutGpsOk ? "" : ""}`}>
+                      <span className="verify-icon">{clockOutGpsOk ? "✅" : clockOutVerifying ? "⏳" : "⭕"}</span>
+                      <div style={{ flex: 1, textAlign: "left" }}>
+                        <div>{clockOutGpsOk ? T("Exit Location Captured ✓", "تم تسجيل موقع الخروج ✓") : T("Capturing GPS...", "جاري تسجيل الموقع...")}</div>
+                      </div>
+                    </div>
+                    <div className={`verify-step ${clockOutPhotoOk ? "success" : ""}`}>
+                      <span className="verify-icon">{clockOutPhotoOk ? "✅" : clockOutVerifying ? "⏳" : "⭕"}</span>
+                      <div style={{ flex: 1, textAlign: "left" }}>
+                        <div>{clockOutPhotoOk ? T("📸 Exit Photo Captured ✓", "📸 تم التقاط صورة الخروج ✓") : T("Opening camera...", "جاري فتح الكاميرا...")}</div>
+                        {clockOutPhoto && <img src={clockOutPhoto} alt="out" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--err)" }} />}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
