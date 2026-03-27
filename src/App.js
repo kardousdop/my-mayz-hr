@@ -153,7 +153,8 @@ function isWorkingDay(empType) {
   return true;
 }
 
-// Check if today is a working day
+// Distance calculation
+function distKm(lat1, lng1, lat2, lng2) {
   return Math.sqrt(Math.pow(lat1 - lat2, 2) + Math.pow(lng1 - lng2, 2)) * 111;
 }
 
@@ -700,7 +701,7 @@ export default function App() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
-  const [reportFilter, setReportFilter] = useState({ from: "", to: "", emp: "" });
+  const [reportFilter, setReportFilter] = useState({ from: "", to: "", emp: "", status: "" });
   const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
   const [empShifts, setEmpShifts] = useState([]);
   const [clockOutGpsOk, setClockOutGpsOk] = useState(false);
@@ -1241,6 +1242,7 @@ export default function App() {
       if (reportFilter.from && a.date < reportFilter.from) return false;
       if (reportFilter.to && a.date > reportFilter.to) return false;
       if (reportFilter.emp && a.employee_id !== Number(reportFilter.emp)) return false;
+      if (reportFilter.status && a.status !== reportFilter.status) return false;
       return true;
     });
 
@@ -1399,6 +1401,21 @@ export default function App() {
             {/* Filters */}
             <div className="card">
               <div className="card-title" style={{ marginBottom: 16 }}>🔍 {T("Filter Reports", "تصفية التقارير")}</div>
+              {/* Quick filters */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                {[
+                  { label: T("All", "الكل"), status: "" },
+                  { label: T("⚠️ Late", "⚠️ متأخر"), status: "late" },
+                  { label: T("❌ Incomplete Shift", "❌ وردية ناقصة"), status: "incomplete" },
+                  { label: T("✅ Present", "✅ حاضر"), status: "present" },
+                  { label: T("🔴 Absent", "🔴 غائب"), status: "absent" },
+                ].map(f => (
+                  <button key={f.status} onClick={() => setReportFilter({ ...reportFilter, status: f.status })}
+                    style={{ padding: "6px 14px", background: reportFilter.status === f.status ? "var(--acc)" : "var(--bg2)", border: `1px solid ${reportFilter.status === f.status ? "var(--acc)" : "var(--border)"}`, color: reportFilter.status === f.status ? "white" : "var(--t2)", borderRadius: 20, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, transition: "all 0.15s" }}>
+                    {f.label} {f.status ? `(${attendance.filter(a => a.status === f.status).length})` : `(${attendance.length})`}
+                  </button>
+                ))}
+              </div>
               <div className="form-row">
                 <div className="form-group"><label>{T("From Date", "من تاريخ")}</label><input type="date" value={reportFilter.from} onChange={e => setReportFilter({ ...reportFilter, from: e.target.value })} /></div>
                 <div className="form-group"><label>{T("To Date", "إلى تاريخ")}</label><input type="date" value={reportFilter.to} onChange={e => setReportFilter({ ...reportFilter, to: e.target.value })} /></div>
@@ -1410,7 +1427,7 @@ export default function App() {
                   {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                 </select>
               </div>
-              <Btn color="outline" size="sm" onClick={() => setReportFilter({ from: "", to: "", emp: "" })}>🗑️ {T("Clear Filters", "مسح التصفية")}</Btn>
+              <Btn color="outline" size="sm" onClick={() => setReportFilter({ from: "", to: "", emp: "", status: "" })}>🗑️ {T("Clear Filters", "مسح التصفية")}</Btn>
             </div>
 
             {/* Attendance Table */}
@@ -1423,12 +1440,12 @@ export default function App() {
                   <thead><tr>
                     <th>{T("Date", "التاريخ")}</th>
                     <th>{T("Employee", "الموظف")}</th>
+                    <th>{T("Shift", "المناوبة")}</th>
                     <th>{T("Check In", "دخول")}</th>
                     <th>{T("Check Out", "خروج")}</th>
                     <th>{T("Hours", "ساعات")}</th>
                     <th>{T("Location", "الموقع")}</th>
                     <th>{T("In GPS", "GPS دخول")}</th>
-                    <th>{T("Out GPS", "GPS خروج")}</th>
                     <th>{T("Status", "الحالة")}</th>
                     <th>{T("In Photo", "صورة دخول")}</th>
                     <th>{T("Out Photo", "صورة خروج")}</th>
@@ -1438,17 +1455,22 @@ export default function App() {
                       ? <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>{T("No records found", "لا توجد سجلات")}</td></tr>
                       : filtered.map((a, i) => {
                         const emp = employees.find(e => e.id === a.employee_id);
+                        const es = empShifts.find(x => x.employee_id === a.employee_id);
+                        const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                        const isLate = a.status === "late" || a.status === "very_late";
+                        const isIncomplete = a.status === "incomplete";
                         return (
-                          <tr key={i}>
+                          <tr key={i} style={{ background: isLate ? "rgba(245,158,11,0.05)" : isIncomplete ? "rgba(239,68,68,0.05)" : "" }}>
                             <td style={{ fontWeight: 500, color: "var(--t1)" }}>{a.date}</td>
                             <td><div className="emp-row"><div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{emp?.avatar || "?"}</div><span>{emp?.name || "Unknown"}</span></div></td>
-                            <td style={{ color: "var(--ok)" }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                            <td style={{ fontSize: 11, color: shift ? shift.color || "var(--acc)" : "var(--t3)" }}>{shift ? (ar ? shift.name_ar : shift.name) : "—"}<br/>{shift ? `${shift.start_time}→${shift.end_time}` : ""}</td>
+                            <td style={{ color: isLate ? "var(--warn)" : "var(--ok)", fontWeight: isLate ? 700 : 400 }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}{isLate ? " ⚠️" : ""}</td>
                             <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                            <td>{a.hours_worked ? `${a.hours_worked}h` : "—"}</td>
-                            <td>{a.location_label ? <span className="badge blue">{a.location_label}</span> : "—"}</td>
+                            <td style={{ color: isIncomplete ? "var(--err)" : "var(--t2)", fontWeight: isIncomplete ? 700 : 400 }}>{a.hours_worked ? `${a.hours_worked}h` : "—"}{isIncomplete ? " ⚠️" : ""}</td>
+                            <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 20 ? a.location_label.substring(0, 20) + "..." : a.location_label}</span> : "—"}</td>
                             <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
-                            <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.checkout_gps_lat ? `${Number(a.checkout_gps_lat).toFixed(4)}, ${Number(a.checkout_gps_lng).toFixed(4)}` : "—"}</td>
-                            <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" ? "yellow" : "red"}`}>{a.status}</span></td>
+                            <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
+                            {a.notes && <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes}</td>}
                             <td>{a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
                             <td>{a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—"}</td>
                           </tr>
