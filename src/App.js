@@ -212,8 +212,8 @@ const css = `
   .verify-step.error{background:var(--errb)}.verify-step.success{background:var(--okb)}
   .verify-icon{font-size:16px;flex-shrink:0}
   .gps-coords{font-size:11px;color:var(--t3);margin-top:4px}
-  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:1000;padding:40px 20px;overflow-y:auto}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:560px;max-width:100%;margin:auto;}
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;overflow-y:auto}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:560px;max-width:calc(100vw - 40px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative;}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
   .modal-title{font-size:18px;font-weight:700}
   .form-group{margin-bottom:16px}
