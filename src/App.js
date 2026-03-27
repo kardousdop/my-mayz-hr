@@ -714,6 +714,34 @@ export default function App() {
     if (pay) setPayroll(pay);
     if (sh && sh.length > 0) setShifts(sh);
     if (esh) setEmpShifts(esh);
+
+    // Auto-generate payroll for current month if admin/hr and missing
+    if ((role === "admin" || role === "hr") && emps && pay !== null) {
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const curMonth = months[new Date().getMonth()];
+      const curYear = new Date().getFullYear();
+      const activeEmps = emps.filter(e => e.status === "active" && Number(e.salary || 0) > 0);
+      for (const emp of activeEmps) {
+        const exists = (pay || []).find(p => p.employee_id === emp.id && p.month === curMonth && p.year === curYear);
+        if (!exists) {
+          const activeLoan = (ln || []).find(l => l.employee_id === emp.id && l.status === "active");
+          const net = (emp.salary||0) + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - (activeLoan?.monthly_deduction||0);
+          await db("payroll", "POST", {
+            employee_id: emp.id, month: curMonth, year: curYear,
+            base_salary: emp.salary||0, allowances: emp.allowances||0,
+            bonuses: emp.bonuses||0, deductions: emp.deductions||0,
+            tax: emp.tax||0, insurance: emp.insurance||0,
+            loan_deduction: activeLoan?.monthly_deduction||0,
+            net_salary: net, status: "pending",
+          });
+        }
+      }
+      // Reload payroll after auto-generation
+      if (activeEmps.length > 0) {
+        const freshPay = await db("payroll", "GET", null, "?select=*&order=year.desc,month.desc");
+        if (freshPay) setPayroll(freshPay);
+      }
+    }
   };
 
   const openModal = (name, data = {}) => { setActiveModal(name); setModalData(data); };
