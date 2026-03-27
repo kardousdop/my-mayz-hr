@@ -1844,7 +1844,37 @@ export default function App() {
       <div className="card-header" style={{ marginBottom: 20 }}>
         <div className="card-title">💳 {T("Employee Loans", "قروض الموظفين")}</div>
         {(role === "admin" || role === "hr" || role === "accountant") && (
-          <Btn color="primary" onClick={() => openModal("addLoan", { employee_id: employees[0]?.id, amount: 0, monthly_deduction: 0, reason: "" })}>➕ {T("New Loan", "قرض جديد")}</Btn>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn color="outline" onClick={async () => {
+              // Recalculate all active payroll records with current loan deductions
+              const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+              const curMonth = months[new Date().getMonth()];
+              const curYear = new Date().getFullYear();
+              let updated = 0;
+              for (const loan of loans.filter(l => l.status === "active")) {
+                const emp = employees.find(e => e.id === loan.employee_id);
+                if (!emp) continue;
+                const loanDed = Number(loan.monthly_deduction) || 0;
+                const existingPay = payroll.find(p => p.employee_id === loan.employee_id && p.month === curMonth && p.year === curYear);
+                if (existingPay) {
+                  const base = Number(existingPay.base_salary)||0;
+                  const newNet = base + (Number(existingPay.allowances)||0) + (Number(existingPay.bonuses)||0) - (Number(existingPay.deductions)||0) - (Number(existingPay.tax)||0) - (Number(existingPay.insurance)||0) - loanDed;
+                  await db("payroll", "PATCH", { loan_deduction: loanDed, net_salary: newNet }, `?id=eq.${existingPay.id}`);
+                  updated++;
+                } else {
+                  const base = emp.salary||0;
+                  const newNet = base + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - loanDed;
+                  await db("payroll", "POST", { employee_id: emp.id, month: curMonth, year: curYear, base_salary: base, allowances: emp.allowances||0, bonuses: emp.bonuses||0, deductions: emp.deductions||0, tax: emp.tax||0, insurance: emp.insurance||0, loan_deduction: loanDed, net_salary: newNet, status: "pending" });
+                  updated++;
+                }
+              }
+              await loadAll();
+              alert(T(`✅ Recalculated ${updated} payroll records with loan deductions.`, `✅ تم إعادة حساب ${updated} مسير رواتب مع خصومات القروض.`));
+            }}>🔄 {T("Sync Loans → Payroll", "مزامنة القروض مع الرواتب")}</Btn>
+            {(role === "admin" || role === "hr") && (
+              <Btn color="primary" onClick={() => openModal("addLoan", { employee_id: employees[0]?.id, amount: 0, monthly_deduction: 0, reason: "" })}>➕ {T("New Loan", "قرض جديد")}</Btn>
+            )}
+          </div>
         )}
       </div>
 
@@ -1872,7 +1902,15 @@ export default function App() {
               <div className="loan-progress"><div className="loan-bar" style={{ width: `${pct}%` }} /></div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--t3)", marginBottom: 12 }}>
                 <span>{pct}% {T("paid", "مدفوع")}</span>
-                <span className={`badge ${loan.status === "active" ? "yellow" : "green"}`}>{loan.status}</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className={`badge ${loan.status === "active" ? "yellow" : loan.status === "settled" ? "green" : "red"}`}>{loan.status}</span>
+                  {role === "admin" && (
+                    <>
+                      <Btn size="sm" color="outline" onClick={() => openModal("editLoan", { ...loan })}>✏️</Btn>
+                      <Btn size="sm" color="danger" onClick={async () => { if (window.confirm(T("Delete this loan?", "حذف هذا القرض؟"))) { await db("loans", "DELETE", null, `?id=eq.${loan.id}`); loadAll(); } }}>🗑️</Btn>
+                    </>
+                  )}
+                </div>
               </div>
               {loan.status === "active" && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1919,6 +1957,38 @@ export default function App() {
             await db("loans", "POST", { ...modalData, status: "active" });
             await loadAll(); setSaving(false); closeModal();
           }}>{saving ? <span className="spinner" /> : T("Approve Loan", "الموافقة على القرض")}</Btn>
+        </div>
+      </Modal>
+
+      {/* Edit Loan Modal - Admin only */}
+      <Modal show={activeModal === "editLoan"} onClose={closeModal} title={T("✏️ Edit Loan", "✏️ تعديل القرض")}>
+        <div className="info-box">
+          {T("Edit loan details. Changes will affect future payroll calculations.", "تعديل بيانات القرض. التغييرات ستؤثر على حسابات الرواتب القادمة.")}
+        </div>
+        <div className="form-row">
+          <div className="form-group"><label>{T("Loan Amount (EGP)", "مبلغ القرض")}</label><input type="number" value={modalData.amount || ""} onChange={e => setModalData({ ...modalData, amount: +e.target.value })} /></div>
+          <div className="form-group"><label>{T("Remaining (EGP)", "المتبقي")}</label><input type="number" value={modalData.remaining || ""} onChange={e => setModalData({ ...modalData, remaining: +e.target.value })} /></div>
+        </div>
+        <div className="form-row">
+          <div className="form-group"><label>{T("Monthly Deduction (EGP)", "الخصم الشهري")}</label><input type="number" value={modalData.monthly_deduction || ""} onChange={e => setModalData({ ...modalData, monthly_deduction: +e.target.value })} /></div>
+          <div className="form-group"><label>{T("Status", "الحالة")}</label>
+            <select value={modalData.status || "active"} onChange={e => setModalData({ ...modalData, status: e.target.value })}>
+              <option value="active">{T("Active", "نشط")}</option>
+              <option value="settled">{T("Settled", "مسدد")}</option>
+              <option value="rejected">{T("Rejected", "مرفوض")}</option>
+            </select>
+          </div>
+        </div>
+        {modalData.amount > 0 && modalData.monthly_deduction > 0 && (
+          <div className="info-box">⏱️ ~{Math.ceil((modalData.remaining || modalData.amount) / modalData.monthly_deduction)} {T("months remaining", "أشهر متبقية")}</div>
+        )}
+        <div className="form-actions">
+          <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+          <Btn color="primary" disabled={saving} onClick={async () => {
+            setSaving(true);
+            await db("loans", "PATCH", { amount: modalData.amount, remaining: modalData.remaining, monthly_deduction: modalData.monthly_deduction, status: modalData.status }, `?id=eq.${modalData.id}`);
+            await loadAll(); setSaving(false); closeModal();
+          }}>{saving ? <span className="spinner" /> : T("Save Changes", "حفظ التغييرات")}</Btn>
         </div>
       </Modal>
     </div>
