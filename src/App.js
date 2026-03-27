@@ -539,9 +539,9 @@ export default function App() {
                       <td style={{ color: "var(--ok)", fontWeight: 600 }}>{(emp.salary || 0).toLocaleString()} EGP</td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : "red"}`}>{emp.status}</span></td>
                       <td>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button className="btn btn-outline btn-sm" onClick={() => { setModal("editEmployee"); setModalData({ ...emp }); }}><I.Edit /></button>
-                          <button className="btn btn-outline btn-sm" onClick={() => { setModal("editSalary"); setModalData({ ...emp }); }}><I.Dollar /></button>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button style={{ padding: "6px 14px", background: "transparent", border: "1px solid var(--border)", color: "var(--t2)", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }} onClick={() => { setModal("editEmployee"); setModalData({ ...emp }); }}>✏️ {t("Edit","تعديل")}</button>
+                          <button style={{ padding: "6px 14px", background: "transparent", border: "1px solid var(--border)", color: "var(--ok)", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }} onClick={() => { setModal("editSalary"); setModalData({ ...emp }); }}>💰 {t("Salary","الراتب")}</button>
                         </div>
                       </td>
                     </tr>
@@ -814,9 +814,9 @@ export default function App() {
                         <td style={{ color: "var(--ok)", fontWeight: 700 }}>{net.toLocaleString()} EGP</td>
                         <td><span className={`badge ${p.status === "paid" ? "green" : "yellow"}`}>{p.status}</span></td>
                         <td>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button className="btn btn-outline btn-sm" onClick={() => { setModal("editPayroll"); setModalData({ ...p }); }}><I.Edit /></button>
-                            {p.status === "pending" && <button className="btn btn-success btn-sm" onClick={async () => { await db("payroll", "PATCH", { status: "paid", paid_at: new Date().toISOString() }, `?id=eq.${p.id}`); loadAll(); }}>{t("Pay", "دفع")}</button>}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button style={{ padding: "6px 14px", background: "transparent", border: "1px solid var(--border)", color: "var(--t2)", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={() => { setModal("editPayroll"); setModalData({ ...p }); }}>✏️ {t("Edit","تعديل")}</button>
+                            {p.status === "pending" && <button style={{ padding: "6px 14px", background: "var(--ok)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("payroll", "PATCH", { status: "paid", paid_at: new Date().toISOString() }, `?id=eq.${p.id}`); loadAll(); }}>✅ {t("Pay","دفع")}</button>}
                           </div>
                         </td>
                       </tr>
@@ -911,13 +911,13 @@ export default function App() {
             </div>
             {loan.status === "active" && (
               <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                <button className="btn btn-outline btn-sm" onClick={async () => {
+                <button style={{ padding: "6px 14px", background: "transparent", border: "1px solid var(--border)", color: "var(--t2)", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => {
                   const newRemaining = Math.max(0, loan.remaining - loan.monthly_deduction);
                   const newStatus = newRemaining <= 0 ? "settled" : "active";
                   await db("loans", "PATCH", { remaining: newRemaining, status: newStatus }, `?id=eq.${loan.id}`);
                   loadAll();
-                }}>{t("Deduct Monthly", "خصم شهري")}</button>
-                <button className="btn btn-success btn-sm" onClick={async () => { await db("loans", "PATCH", { remaining: 0, status: "settled" }, `?id=eq.${loan.id}`); loadAll(); }}>{t("Mark Settled", "تسوية كاملة")}</button>
+                }}>💸 {t("Deduct Monthly", "خصم شهري")}</button>
+                <button style={{ padding: "6px 14px", background: "var(--ok)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("loans", "PATCH", { remaining: 0, status: "settled" }, `?id=eq.${loan.id}`); loadAll(); }}>✅ {t("Mark Settled", "تسوية كاملة")}</button>
               </div>
             )}
           </div>
@@ -1067,8 +1067,8 @@ export default function App() {
                       <div style={{ fontSize: 13, color: "var(--t3)" }}>{ex.date} · {ex.from_time}→{ex.to_time} · {ex.reason}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn btn-success btn-sm" onClick={async () => { await db("excuse_requests", "PATCH", { status: "approved" }, `?id=eq.${ex.id}`); loadAll(); }}><I.Check /></button>
-                      <button className="btn btn-danger btn-sm" onClick={async () => { await db("excuse_requests", "PATCH", { status: "rejected" }, `?id=eq.${ex.id}`); loadAll(); }}><I.X /></button>
+                      <button style={{ padding: "6px 14px", background: "var(--ok)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("excuse_requests", "PATCH", { status: "approved" }, `?id=eq.${ex.id}`); loadAll(); }}>✅ {t("Approve","موافقة")}</button>
+                      <button style={{ padding: "6px 14px", background: "var(--err)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("excuse_requests", "PATCH", { status: "rejected" }, `?id=eq.${ex.id}`); loadAll(); }}>❌ {t("Reject","رفض")}</button>
                     </div>
                   </div>
                 );
@@ -1084,8 +1084,8 @@ export default function App() {
                       <div style={{ fontSize: 13, color: "var(--t3)" }}>{lv.start_date} → {lv.end_date} · {lv.reason}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn btn-success btn-sm" onClick={async () => { await db("leave_requests", "PATCH", { status: "approved" }, `?id=eq.${lv.id}`); loadAll(); }}><I.Check /></button>
-                      <button className="btn btn-danger btn-sm" onClick={async () => { await db("leave_requests", "PATCH", { status: "rejected" }, `?id=eq.${lv.id}`); loadAll(); }}><I.X /></button>
+                      <button style={{ padding: "6px 14px", background: "var(--ok)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("leave_requests", "PATCH", { status: "approved" }, `?id=eq.${lv.id}`); loadAll(); }}>✅ {t("Approve","موافقة")}</button>
+                      <button style={{ padding: "6px 14px", background: "var(--err)", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }} onClick={async () => { await db("leave_requests", "PATCH", { status: "rejected" }, `?id=eq.${lv.id}`); loadAll(); }}>❌ {t("Reject","رفض")}</button>
                     </div>
                   </div>
                 );
