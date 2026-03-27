@@ -856,26 +856,28 @@ export default function HRApp() {
       setVerifying(null);
       return;
     }
+    const faceEnrolled = localStorage.getItem("faceio_enrolled");
     try {
-      const resp = await fio.authenticate({ locale: lang === "ar" ? "ar" : "auto" });
-      setFaceVerified(true);
-      console.log("FaceIO authenticated:", resp.facialId);
-    } catch (authErr) {
-      console.warn("Auth failed, trying enrollment. Error:", authErr);
-      try {
+      if (!faceEnrolled) {
         const enrolled = await fio.enroll({
           locale: lang === "ar" ? "ar" : "auto",
           payload: { userId: currentUser?.id || "EMP001", name: "Ahmed Kardous" },
         });
+        localStorage.setItem("faceio_enrolled", "true");
+        localStorage.setItem("faceio_facial_id", enrolled.facialId);
         setFaceVerified(true);
-        console.log("FaceIO enrolled new face:", enrolled.facialId);
-      } catch (enrollErr) {
-        const enrollCode = enrollErr.code !== undefined ? enrollErr.code : enrollErr;
-        setFaceError(`Face scan failed (code: ${enrollCode}). Please try again.`);
-        setVerifying(null);
-        faceioInstance = null;
-        return;
+        console.log("FaceIO enrolled:", enrolled.facialId);
+      } else {
+        const resp = await fio.authenticate({ locale: lang === "ar" ? "ar" : "auto" });
+        setFaceVerified(true);
+        console.log("FaceIO authenticated:", resp.facialId);
       }
+    } catch (faceErr) {
+      const code = faceErr.code !== undefined ? faceErr.code : faceErr;
+      setFaceError(`Face scan failed (code: ${code}). Please try again.`);
+      setVerifying(null);
+      faceioInstance = null;
+      return;
     }
 
     // STEP 3: Save attendance to Supabase
