@@ -1,0 +1,19 @@
+{
+  "short_name": "myMayz HR",
+  "name": "myMayz HR - Smart HR Automation",
+  "description": "Complete HR system with GPS attendance, face recognition, payroll & automation",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0a0e1a",
+  "background_color": "#0a0e1a",
+  "scope": "/",
+  "lang": "en",
+  "dir": "auto",
+  "categories": ["business", "productivity"]
+}

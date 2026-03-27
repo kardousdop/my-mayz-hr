@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0e1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="myMayz HR" />
+    <meta name="description" content="myMayz HR - Smart HR Automation Platform with GPS Attendance, Face Recognition & Payroll | نظام أتمتة الموارد البشرية الذكي" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/icon-192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <!-- FaceIO SDK — REQUIRED for face recognition attendance -->
+    <script src="https://cdn.faceio.net/fio.js"></script>
+    <title>myMayz HR System</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{background:#0a0e1a;overflow-x:hidden}
+      #splash{position:fixed;inset:0;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
+      #splash.hide{opacity:0;pointer-events:none}
+      #splash h1{font-family:system-ui;font-size:28px;color:#f0f2f8;font-weight:700}
+      #splash h1 span{color:#6366f1}
+      #splash p{font-family:system-ui;color:#5a6580;font-size:13px;margin-top:8px}
+      @keyframes sp{to{transform:rotate(360deg)}}
+      #splash .sp{width:32px;height:32px;border:3px solid #2a3454;border-top-color:#6366f1;border-radius:50%;animation:sp .7s linear infinite;margin-top:24px}
+    </style>
+  </head>
+  <body>
+    <div id="splash"><h1>my<span>Mayz</span> HR</h1><p>Loading system...</p><div class="sp"></div></div>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script>window.addEventListener('load',()=>{setTimeout(()=>{const s=document.getElementById('splash');if(s)s.classList.add('hide');setTimeout(()=>{if(s)s.remove()},500)},800)})</script>
+  </body>
+</html>
