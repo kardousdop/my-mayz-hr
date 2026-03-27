@@ -740,30 +740,42 @@ export default function App() {
     }
 
     // Auto-generate payroll for current month if admin/hr and missing
-    if ((role === "admin" || role === "hr") && emps && pay !== null) {
+    if ((role === "admin" || role === "hr") && emps && pay !== null && ln !== null) {
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
       const curMonth = months[new Date().getMonth()];
       const curYear = new Date().getFullYear();
       const activeEmps = emps.filter(e => e.status === "active" && Number(e.salary || 0) > 0);
+      let generated = 0;
       for (const emp of activeEmps) {
         const exists = (pay || []).find(p => p.employee_id === emp.id && p.month === curMonth && p.year === curYear);
         if (!exists) {
+          // Get active loan for this employee
           const activeLoan = (ln || []).find(l => l.employee_id === emp.id && l.status === "active");
-          const net = (emp.salary||0) + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - (activeLoan?.monthly_deduction||0);
+          const loanDed = activeLoan ? Number(activeLoan.monthly_deduction) : 0;
+          const net = (emp.salary||0) + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - loanDed;
           await db("payroll", "POST", {
             employee_id: emp.id, month: curMonth, year: curYear,
             base_salary: emp.salary||0, allowances: emp.allowances||0,
             bonuses: emp.bonuses||0, deductions: emp.deductions||0,
             tax: emp.tax||0, insurance: emp.insurance||0,
-            loan_deduction: activeLoan?.monthly_deduction||0,
-            net_salary: net, status: "pending",
+            loan_deduction: loanDed, net_salary: net, status: "pending",
           });
+          // Auto-deduct from loan remaining
+          if (activeLoan && loanDed > 0) {
+            const newRemaining = Math.max(0, Number(activeLoan.remaining) - loanDed);
+            await db("loans", "PATCH", {
+              remaining: newRemaining,
+              status: newRemaining <= 0 ? "settled" : "active",
+            }, `?id=eq.${activeLoan.id}`);
+          }
+          generated++;
         }
       }
-      // Reload payroll after auto-generation
-      if (activeEmps.length > 0) {
+      if (generated > 0) {
         const freshPay = await db("payroll", "GET", null, "?select=*&order=year.desc,month.desc");
         if (freshPay) setPayroll(freshPay);
+        const freshLoans = await db("loans", "GET", null, "?select=*&order=created_at.desc");
+        if (freshLoans) setLoans(freshLoans);
       }
     }
   };
@@ -1865,8 +1877,17 @@ export default function App() {
               {loan.status === "active" && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Btn size="sm" color="warning" onClick={async () => {
+                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
                     const newRem = Math.max(0, loan.remaining - loan.monthly_deduction);
                     await db("loans", "PATCH", { remaining: newRem, status: newRem <= 0 ? "settled" : "active" }, `?id=eq.${loan.id}`);
+                    // Update current month payroll with loan deduction
+                    const curMonth = months[new Date().getMonth()];
+                    const curYear = new Date().getFullYear();
+                    const existingPay = payroll.find(p => p.employee_id === loan.employee_id && p.month === curMonth && p.year === curYear);
+                    if (existingPay && Number(existingPay.loan_deduction || 0) === 0) {
+                      const newNet = Number(existingPay.net_salary) - Number(loan.monthly_deduction);
+                      await db("payroll", "PATCH", { loan_deduction: loan.monthly_deduction, net_salary: newNet }, `?id=eq.${existingPay.id}`);
+                    }
                     loadAll();
                   }}>💸 {T("Deduct Monthly", "خصم شهري")} ({Number(loan.monthly_deduction).toLocaleString()} EGP)</Btn>
                   <Btn size="sm" color="success" onClick={async () => { await db("loans", "PATCH", { remaining: 0, status: "settled" }, `?id=eq.${loan.id}`); loadAll(); }}>✅ {T("Mark Settled", "تسوية كاملة")}</Btn>
@@ -2191,8 +2212,30 @@ export default function App() {
                     {canApprove && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         <Btn size="sm" color="success" onClick={async () => {
+                          const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                          // Approve loan
                           await db("loans", "PATCH", { status: "active", approved_by: currentEmployee?.name || "Admin" }, `?id=eq.${ln.id}`);
+                          
+                          // Find employee salary details
+                          const emp = employees.find(e => e.id === ln.employee_id);
+                          if (emp) {
+                            // Update current month payroll with loan deduction
+                            const curMonth = months[new Date().getMonth()];
+                            const curYear = new Date().getFullYear();
+                            const existingPay = payroll.find(p => p.employee_id === ln.employee_id && p.month === curMonth && p.year === curYear);
+                            const loanDed = Number(ln.monthly_deduction) || 0;
+                            
+                            if (existingPay) {
+                              const newNet = Number(existingPay.net_salary) - loanDed;
+                              await db("payroll", "PATCH", { loan_deduction: loanDed, net_salary: newNet }, `?id=eq.${existingPay.id}`);
+                            } else {
+                              const base = emp.salary||0;
+                              const net = base + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - loanDed;
+                              await db("payroll", "POST", { employee_id: emp.id, month: curMonth, year: curYear, base_salary: base, allowances: emp.allowances||0, bonuses: emp.bonuses||0, deductions: emp.deductions||0, tax: emp.tax||0, insurance: emp.insurance||0, loan_deduction: loanDed, net_salary: net, status: "pending" });
+                            }
+                          }
                           loadAll();
+                          alert(T(`✅ Loan approved! ${Number(ln.monthly_deduction).toLocaleString()} EGP will be deducted monthly from ${emp?.name}'s salary until settled.`, `✅ تمت الموافقة على القرض! سيتم خصم ${Number(ln.monthly_deduction).toLocaleString()} جنيه شهرياً من راتب ${emp?.name} حتى السداد.`));
                         }}>✅ {T("Approve", "موافقة")}</Btn>
                         <Btn size="sm" color="danger" onClick={async () => {
                           await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`);
