@@ -1118,27 +1118,35 @@ export default function App() {
                       <td>{emp.department || "—"}</td>
                       <td>{emp.position || "—"}</td>
                       <td>
-                        <div style={{ lineHeight: 1.5 }}>
-                          <div style={{ color: "var(--ok)", fontWeight: 700, fontSize: 14 }}>
-                            {Number(emp.salary || 0).toLocaleString()} EGP
-                            <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400, marginLeft: 4 }}>{T("base", "أساسي")}</span>
-                          </div>
-                          {(Number(emp.allowances)||0) + (Number(emp.bonuses)||0) > 0 && (
-                            <div style={{ fontSize: 11, color: "var(--ok)" }}>
-                              +{(Number(emp.allowances||0) + Number(emp.bonuses||0)).toLocaleString()} {T("benefits", "بدلات")}
+                        {(() => {
+                          const base = Number(emp.salary || 0);
+                          const benefits = Number(emp.allowances||0) + Number(emp.bonuses||0);
+                          const deds = Number(emp.deductions||0) + Number(emp.tax||0) + Number(emp.insurance||0);
+                          const structuralNet = base + benefits - deds;
+                          // Find active loan deduction for this employee
+                          const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                          const curMonth = months[new Date().getMonth()];
+                          const curYear = new Date().getFullYear();
+                          const empPayroll = payroll.find(p => p.employee_id === emp.id && p.month === curMonth && p.year === curYear);
+                          const loanDed = empPayroll ? Number(empPayroll.loan_deduction||0) : 0;
+                          const finalNet = structuralNet - loanDed;
+                          return (
+                            <div style={{ lineHeight: 1.5 }}>
+                              <div style={{ color: "var(--ok)", fontWeight: 700, fontSize: 14 }}>
+                                {base.toLocaleString()} EGP
+                                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400, marginLeft: 4 }}>{T("base", "أساسي")}</span>
+                              </div>
+                              {benefits > 0 && <div style={{ fontSize: 11, color: "var(--ok)" }}>+{benefits.toLocaleString()} {T("benefits", "بدلات")}</div>}
+                              {deds > 0 && <div style={{ fontSize: 11, color: "var(--err)" }}>-{deds.toLocaleString()} {T("deductions", "خصومات")}</div>}
+                              {loanDed > 0 && <div style={{ fontSize: 11, color: "var(--warn)" }}>-{loanDed.toLocaleString()} {T("loan", "قرض")}</div>}
+                              {(benefits > 0 || deds > 0 || loanDed > 0) && (
+                                <div style={{ fontSize: 13, color: "var(--acc)", fontWeight: 700, borderTop: "1px solid var(--border)", paddingTop: 2, marginTop: 2 }}>
+                                  = {finalNet.toLocaleString()} {T("net", "صافي")}
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {(Number(emp.deductions)||0) + (Number(emp.tax)||0) + (Number(emp.insurance)||0) > 0 && (
-                            <div style={{ fontSize: 11, color: "var(--err)" }}>
-                              -{(Number(emp.deductions||0) + Number(emp.tax||0) + Number(emp.insurance||0)).toLocaleString()} {T("deductions", "خصومات")}
-                            </div>
-                          )}
-                          {Number(emp.net_salary) > 0 && Number(emp.net_salary) !== Number(emp.salary) && (
-                            <div style={{ fontSize: 12, color: "var(--acc)", fontWeight: 600, marginTop: 2 }}>
-                              = {Number(emp.net_salary).toLocaleString()} {T("net", "صافي")}
-                            </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </td>
                       <td><span className={`badge ${emp.role === "admin" ? "purple" : emp.role === "hr" ? "green" : emp.role === "accountant" ? "yellow" : "blue"}`}>{emp.role || "employee"}</span></td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
@@ -1347,22 +1355,26 @@ export default function App() {
               const curMonth = months[new Date().getMonth()];
               const curYear = new Date().getFullYear();
 
-              // Save to employee record (net salary WITHOUT loan - loan shown separately in payroll)
+              // Save to employee record - net WITHOUT loan (structural salary)
               const empResult = await db("employees", "PATCH", { salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${modalData.id}`);
-              console.log("Salary save result:", empResult);
 
-              // Auto-create or update payroll for this month (WITH loan deduction)
-              const activeLoan = loans.find(l => l.employee_id === modalData.id && l.status === "active");
-              const loanDed = activeLoan ? Number(activeLoan.monthly_deduction) : 0;
-              const netWithLoan = net - loanDed;
+              // Get ALL active loans for this employee and sum deductions
+              const activeLoans = loans.filter(l => l.employee_id === modalData.id && l.status === "active");
+              const totalLoanDed = activeLoans.reduce((s, l) => s + Number(l.monthly_deduction || 0), 0);
+              const netWithLoan = net - totalLoanDed;
+
+              // Auto-create or update payroll for this month WITH loan deduction
               const existing = payroll.find(p => p.employee_id === modalData.id && p.month === curMonth && p.year === curYear);
               if (existing) {
-                await db("payroll", "PATCH", { base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: loanDed, net_salary: netWithLoan }, `?id=eq.${existing.id}`);
+                await db("payroll", "PATCH", { base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: totalLoanDed, net_salary: netWithLoan }, `?id=eq.${existing.id}`);
               } else {
-                await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: loanDed, net_salary: netWithLoan, status: "pending" });
+                await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: totalLoanDed, net_salary: netWithLoan, status: "pending" });
               }
               await loadAll(); setSaving(false); closeModal();
-              alert(T(`✅ Saved! Structural net: ${net.toLocaleString()} EGP. Payroll net (after loan): ${netWithLoan.toLocaleString()} EGP`, `✅ تم الحفظ! الصافي الهيكلي: ${net.toLocaleString()} جنيه. صافي مسير الراتب (بعد القرض): ${netWithLoan.toLocaleString()} جنيه`));
+              alert(T(
+                `✅ Saved!\nStructural net: ${net.toLocaleString()} EGP\nLoan deduction: -${totalLoanDed.toLocaleString()} EGP\nPayroll net: ${netWithLoan.toLocaleString()} EGP`,
+                `✅ تم الحفظ!\nالصافي الهيكلي: ${net.toLocaleString()} جنيه\nخصم القرض: -${totalLoanDed.toLocaleString()} جنيه\nصافي مسير الراتب: ${netWithLoan.toLocaleString()} جنيه`
+              ));
             }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
           </div>
         </Modal>
