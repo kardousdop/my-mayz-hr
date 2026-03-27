@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import faceIO from "@faceio/fiojs";
 
 // ============================================================
 // SUPABASE CLIENT - Connect to your real database
@@ -33,24 +34,14 @@ let faceioInstance = null;
 
 function waitForFaceIO() {
   return new Promise((resolve, reject) => {
-    if (faceioInstance) { resolve(faceioInstance); return; }
-    let tries = 100;
-    const check = setInterval(() => {
-      tries--;
-      if (window.faceIO) {
-        clearInterval(check);
-        try {
-          faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
-          resolve(faceioInstance);
-        } catch(e) {
-          faceioInstance = null;
-          reject(new Error("FaceIO init error: " + e.message));
-        }
-      } else if (tries <= 0) {
-        clearInterval(check);
-        reject(new Error("FaceIO not available. Please refresh."));
-      }
-    }, 100);
+    try {
+      if (faceioInstance) { resolve(faceioInstance); return; }
+      faceioInstance = new faceIO(FACEIO_PUBLIC_ID);
+      resolve(faceioInstance);
+    } catch(e) {
+      faceioInstance = null;
+      reject(new Error("FaceIO init error: " + (e.message || e)));
+    }
   });
 }
 
