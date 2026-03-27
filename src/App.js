@@ -928,6 +928,9 @@ export default function HRApp() {
     setVerifying(null);
   };
 
+  const t = T[lang];
+  const isRTL = lang === "ar";
+
   const timeStr = now.toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dateStr = now.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
