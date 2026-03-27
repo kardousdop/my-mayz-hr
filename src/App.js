@@ -1942,22 +1942,58 @@ export default function App() {
   // ============================================================
   const renderSettings = () => (
     <div className="fade-in">
-      <div className="card">
+      <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title" style={{ marginBottom: 20 }}>⚙️ {T("System Settings", "إعدادات النظام")}</div>
-        <div className="form-group"><label>{T("Language", "اللغة")}</label>
-          <select value={lang} onChange={e => setLang(e.target.value)}>
-            <option value="en">English</option><option value="ar">العربية</option>
+        <div className="form-group">
+          <label>{T("Language", "اللغة")}</label>
+          <select value={lang} onChange={e => setLang(e.target.value)} style={{ maxWidth: 200 }}>
+            <option value="en">🇬🇧 English</option>
+            <option value="ar">🇪🇬 العربية</option>
           </select>
         </div>
-        <div className="form-group"><label>{T("Office Location", "موقع المكتب")}</label>
-          <div className="info-box">📍 {T("Lat", "خط العرض")}: {OFFICE_LAT} · {T("Lng", "خط الطول")}: {OFFICE_LNG}<br />🎯 {T("Check-in radius", "نطاق تسجيل الحضور")}: {OFFICE_RADIUS_KM * 1000}m</div>
+        <div className="form-group">
+          <label>{T("Database Status", "حالة قاعدة البيانات")}</label>
+          <div><span className={`badge ${SUPABASE_ANON_KEY ? "green" : "red"}`}>{SUPABASE_ANON_KEY ? "✅ " + T("Connected to Supabase", "متصل بـ Supabase") : "❌ " + T("No API Key", "لا يوجد مفتاح")}</span></div>
         </div>
-        <div className="form-group"><label>{T("Database", "قاعدة البيانات")}</label>
-          <span className={`badge ${SUPABASE_ANON_KEY ? "green" : "red"}`}>{SUPABASE_ANON_KEY ? "✅ " + T("Connected", "متصل") : "❌ " + T("No API Key", "لا يوجد مفتاح")}</span>
+        <div className="form-group">
+          <label>{T("System Version", "إصدار النظام")}</label>
+          <span className="badge blue">myMayz HR v4.0</span>
         </div>
-        <div className="form-group"><label>{T("Version", "الإصدار")}</label><span className="badge blue">myMayz HR v3.1 — Final</span></div>
-        <div style={{ marginTop: 20 }}>
+        <div className="form-group">
+          <label>{T("Logged in as", "مسجل الدخول كـ")}</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="emp-avatar">{(currentEmployee?.avatar || "AK")}</div>
+            <div>
+              <div style={{ fontWeight: 600 }}>{currentEmployee?.name || "Ahmed Kardous"}</div>
+              <div style={{ fontSize: 12, color: "var(--t3)", textTransform: "capitalize" }}>{role}</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
           <Btn color="outline" onClick={loadAll}>🔄 {T("Refresh All Data", "تحديث كل البيانات")}</Btn>
+          <Btn color="danger" onClick={handleLogout}>🚪 {T("Logout", "تسجيل الخروج")}</Btn>
+        </div>
+      </div>
+
+      {/* Approved Locations Config */}
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 16 }}>📍 {T("Approved GPS Locations", "مواقع العمل المعتمدة")}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {APPROVED_LOCATIONS.map((loc, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 10 }}>
+              <div style={{ fontSize: 24 }}>{loc.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: "var(--t1)" }}>{loc.name} <span style={{ color: "var(--t3)", fontWeight: 400, fontSize: 13 }}>({loc.nameAr})</span></div>
+                <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 2 }}>
+                  📍 {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)} · 🎯 {T("Radius", "نطاق")}: {(loc.radius * 1000).toFixed(0)}m
+                </div>
+              </div>
+              <span className="badge green">{T("Active", "نشط")}</span>
+            </div>
+          ))}
+        </div>
+        <div className="info-box" style={{ marginTop: 16 }}>
+          💡 {T("To update GPS coordinates, contact your system administrator or update the APPROVED_LOCATIONS constant in the source code.", "لتحديث إحداثيات GPS، تواصل مع مشرف النظام أو قم بتحديث ثابت APPROVED_LOCATIONS في الكود المصدري.")}
         </div>
       </div>
     </div>
@@ -2236,7 +2272,18 @@ export default function App() {
                   <div style={{ fontWeight: 700, fontSize: 15, color: "var(--t1)" }}>{ar ? shift.name_ar : shift.name}</div>
                   {shift.is_night_shift && <span className="badge purple" style={{ fontSize: 11, marginTop: 4 }}>🌙 {T("Night Shift", "وردية ليلية")}</span>}
                 </div>
-                {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editShift", { ...shift })}>✏️</Btn>}
+                {role === "admin" && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Btn size="sm" color="outline" onClick={() => openModal("editShift", { ...shift })}>✏️</Btn>
+                    <Btn size="sm" color="danger" onClick={async () => {
+                      if (window.confirm(T(`Delete "${ar ? shift.name_ar : shift.name}"? Employees assigned to this shift will have no shift.`, `حذف "${shift.name_ar}"؟ سيبقى الموظفون المعينون بدون مناوبة.`))) {
+                        await db("employee_shifts", "DELETE", null, `?shift_id=eq.${shift.id}`);
+                        await db("shifts", "DELETE", null, `?id=eq.${shift.id}`);
+                        await loadAll();
+                      }
+                    }}>🗑️</Btn>
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--t2)" }}>
                 <div>🟢 {T("Start", "بداية")}: <strong style={{ color: "var(--t1)" }}>{shift.start_time}</strong></div>
