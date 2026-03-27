@@ -1925,6 +1925,7 @@ export default function App() {
             { id: "excuse", label: T("⏰ Request Excuse", "⏰ طلب إذن"), show: true },
             { id: "leave", label: T("🏖️ Request Leave", "🏖️ طلب إجازة"), show: true },
             { id: "loanreq", label: T("💰 Request Loan", "💰 طلب قرض"), show: true },
+            { id: "myatt", label: T("📊 My Attendance", "📊 حضوري"), show: true },
             { id: "manage", label: T("👔 Admin Approvals", "👔 موافقات الإدارة") + ((pendingEx.length + pendingLv.length + pendingLn.length) > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : ""), show: role === "admin" || role === "hr" || role === "accountant" },
           ].filter(tab => tab.show).map(tab => (
             <button key={tab.id} className={`tab ${ssTab === tab.id ? "active" : ""}`} onClick={() => setSsTab(tab.id)}>{tab.label}</button>
@@ -1939,7 +1940,7 @@ export default function App() {
                 { icon: "⏰", title: T("Request Excuse", "طلب إذن"), desc: T("Late arrival, early departure, personal errand", "تأخير، خروج مبكر، مأمورية"), tab: "excuse" },
                 { icon: "🏖️", title: T("Request Leave", "طلب إجازة"), desc: T("Annual, sick, personal, unpaid leave", "إجازة سنوية، مرضية، شخصية، بدون راتب"), tab: "leave" },
                 { icon: "💰", title: T("Request Loan", "طلب قرض"), desc: T("Request salary advance or loan", "طلب سلفة أو قرض من الراتب"), tab: "loanreq" },
-                { icon: "📊", title: T("My Attendance", "حضوري"), desc: T("View your attendance history", "عرض سجل حضورك"), tab: null },
+                { icon: "📊", title: T("My Attendance", "حضوري"), desc: T("View your attendance history", "عرض سجل حضورك"), tab: "myatt" },
               ].map((card, i) => (
                 <div key={i} className="ss-card" onClick={() => card.tab && setSsTab(card.tab)}>
                   <div className="ss-card-icon">{card.icon}</div>
@@ -1949,19 +1950,26 @@ export default function App() {
               ))}
             </div>
 
-            {/* My active requests */}
+            {/* My recent requests — ALL types */}
             <div className="card-title" style={{ marginBottom: 16 }}>📋 {T("My Recent Requests", "طلباتي الأخيرة")}</div>
-            {[...myExcuses.slice(0, 3), ...myLeaves.slice(0, 3)].length === 0
-              ? <div className="info-box">{T("No requests yet. Use the tabs above to submit a new request.", "لا توجد طلبات بعد. استخدم التبويبات أعلاه لتقديم طلب جديد.")}</div>
-              : [...myExcuses.slice(0, 3).map(e => ({ ...e, kind: "excuse" })), ...myLeaves.slice(0, 3).map(l => ({ ...l, kind: "leave" }))].map((r, i) => (
-                <div className="req-card" key={i}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{r.kind === "excuse" ? "⏰" : "🏖️"} {r.type}</div>
-                    <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{r.date || `${r.start_date} → ${r.end_date}`} · {r.reason}</div>
+            {(() => {
+              const allReqs = [
+                ...myExcuses.map(e => ({ ...e, kind: "excuse", icon: "⏰", dateStr: e.date })),
+                ...myLeaves.map(l => ({ ...l, kind: "leave", icon: "🏖️", dateStr: `${l.start_date} → ${l.end_date}` })),
+                ...loans.filter(l => l.employee_id === myId).map(l => ({ ...l, kind: "loan", icon: "💰", dateStr: l.start_date, type: `${Number(l.amount).toLocaleString()} EGP` })),
+              ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+              return allReqs.length === 0
+                ? <div className="info-box">{T("No requests yet.", "لا توجد طلبات بعد.")}</div>
+                : allReqs.slice(0, 6).map((r, i) => (
+                  <div className="req-card" key={i}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{r.icon} {r.type}</div>
+                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{r.dateStr} · {r.reason}</div>
+                    </div>
+                    <span className={`badge ${r.status === "approved" || r.status === "active" ? "green" : r.status === "rejected" ? "red" : "yellow"}`}>{r.status}</span>
                   </div>
-                  <span className={`badge ${r.status === "approved" ? "green" : r.status === "rejected" ? "red" : "yellow"}`}>{r.status}</span>
-                </div>
-              ))}
+                ));
+            })()}
 
             {/* Active loans */}
             {myLoans.length > 0 && (
@@ -1976,6 +1984,45 @@ export default function App() {
                 ))}
               </>
             )}
+          </div>
+        )}
+
+        {ssTab === "myatt" && (
+          <div>
+            <div className="card-title" style={{ marginBottom: 16 }}>📊 {T("My Attendance History", "سجل حضوري")}</div>
+            {(() => {
+              const myAtt = attendance.filter(a => a.employee_id === myId).slice(0, 30);
+              return myAtt.length === 0
+                ? <div className="info-box">{T("No attendance records yet.", "لا توجد سجلات حضور بعد.")}</div>
+                : (
+                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                    <div style={{ overflowX: "auto" }}>
+                      <table>
+                        <thead><tr>
+                          <th>{T("Date", "التاريخ")}</th>
+                          <th>{T("Check In", "دخول")}</th>
+                          <th>{T("Check Out", "خروج")}</th>
+                          <th>{T("Hours", "ساعات")}</th>
+                          <th>{T("Location", "الموقع")}</th>
+                          <th>{T("Status", "الحالة")}</th>
+                        </tr></thead>
+                        <tbody>
+                          {myAtt.map((a, i) => (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 500, color: "var(--t1)" }}>{a.date}</td>
+                              <td style={{ color: "var(--ok)" }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                              <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : <span style={{ color: "var(--warn)" }}>⏳ {T("Working", "جاري العمل")}</span>}</td>
+                              <td>{a.hours_worked ? `${a.hours_worked}h` : "—"}</td>
+                              <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 15 ? a.location_label.substring(0, 15) + "..." : a.location_label}</span> : "—"}</td>
+                              <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+            })()}
           </div>
         )}
 
