@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import faceIO from "@faceio/fiojs";
 
 // ============================================================
 // SUPABASE CLIENT - Connect to your real database
@@ -32,17 +31,16 @@ async function supabaseQuery(table, method = "GET", body = null, query = "") {
 const FACEIO_PUBLIC_ID = "fioa9051";
 let faceioInstance = null;
 
-function waitForFaceIO() {
-  return new Promise((resolve, reject) => {
-    try {
-      if (faceioInstance) { resolve(faceioInstance); return; }
-      faceioInstance = new faceIO(FACEIO_PUBLIC_ID);
-      resolve(faceioInstance);
-    } catch(e) {
-      faceioInstance = null;
-      reject(new Error("FaceIO init error: " + (e.message || e)));
-    }
-  });
+async function waitForFaceIO() {
+  if (faceioInstance) return faceioInstance;
+  try {
+    const { default: faceIOLib } = await import("@faceio/fiojs");
+    faceioInstance = new faceIOLib(FACEIO_PUBLIC_ID);
+    return faceioInstance;
+  } catch(e) {
+    faceioInstance = null;
+    throw new Error("FaceIO init error: " + (e.message || e));
+  }
 }
 
 // ============================================================
