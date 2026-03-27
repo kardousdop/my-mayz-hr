@@ -683,6 +683,7 @@ export default function App() {
   const [clockOutPhoto, setClockOutPhoto] = useState(null);
   const [clockOutDone, setClockOutDone] = useState(false);
   const [clockOutVerifying, setClockOutVerifying] = useState(false);
+  const [signup, setSignup] = useState(false);
 
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
@@ -1744,61 +1745,6 @@ export default function App() {
     );
   };
 
-    return (
-      <div className="fade-in">
-        <div className="card-header" style={{ marginBottom: 20 }}>
-          <div className="card-title">💰 {T("Payroll Management", "إدارة الرواتب")}</div>
-          <Btn color="primary" onClick={() => openModal("createPayroll", { month: months[now.getMonth()], year: now.getFullYear(), employee_id: employees[0]?.id, base_salary: employees[0]?.salary || 0, allowances: 0, bonuses: 0, deductions: 0, tax: 0, insurance: 0, loan_deduction: 0 })}>➕ {T("Create Payslip", "إنشاء راتب")}</Btn>
-        </div>
-
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead><tr>
-                <th>{T("Employee", "الموظف")}</th>
-                <th>{T("Period", "الفترة")}</th>
-                <th>{T("Base", "أساسي")}</th>
-                <th>{T("Allowances", "بدلات")}</th>
-                <th>{T("Bonuses", "مكافآت")}</th>
-                <th>{T("Deductions", "خصومات")}</th>
-                <th>{T("Net Salary", "صافي الراتب")}</th>
-                <th>{T("Status", "الحالة")}</th>
-                <th>{T("Actions", "إجراءات")}</th>
-              </tr></thead>
-              <tbody>
-                {payroll.length === 0
-                  ? <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>{T("No payroll records", "لا توجد سجلات رواتب")}</td></tr>
-                  : payroll.map((p, i) => {
-                    const emp = employees.find(e => e.id === p.employee_id);
-                    const net = p.net_salary || calcNet(p);
-                    const totalDed = (p.deductions || 0) + (p.tax || 0) + (p.insurance || 0) + (p.loan_deduction || 0);
-                    return (
-                      <tr key={i}>
-                        <td>{emp?.name || "—"}</td>
-                        <td style={{ fontWeight: 500 }}>{p.month} {p.year}</td>
-                        <td>{Number(p.base_salary || 0).toLocaleString()}</td>
-                        <td style={{ color: "var(--ok)" }}>+{Number(p.allowances || 0).toLocaleString()}</td>
-                        <td style={{ color: "var(--ok)" }}>+{Number(p.bonuses || 0).toLocaleString()}</td>
-                        <td style={{ color: "var(--err)" }}>-{totalDed.toLocaleString()}</td>
-                        <td style={{ color: "var(--ok)", fontWeight: 700 }}>{Number(net).toLocaleString()} EGP</td>
-                        <td><span className={`badge ${p.status === "paid" ? "green" : "yellow"}`}>{p.status}</span></td>
-                        <td>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>
-                            {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll", "PATCH", { status: "paid", paid_at: new Date().toISOString() }, `?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay", "دفع")}</Btn>}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ============================================================
   // LOANS
   // ============================================================
@@ -2186,7 +2132,6 @@ export default function App() {
   // ============================================================
   // LAYOUT
   // ============================================================
-  const [signup, setSignup] = useState(false);
 
   if (!loggedIn) return (
     <>
