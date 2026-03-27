@@ -492,10 +492,25 @@ export default function App() {
     const clockTime = new Date();
     const today = clockTime.toISOString().split("T")[0];
     const empId = employees[0]?.id;
+
+    // Get GPS on clock out
+    let outLoc = null;
+    try { outLoc = await getGPS(); } catch(e) {}
+
+    // Take photo on clock out
+    let outPhoto = null;
+    try { outPhoto = await capturePhoto(); } catch(e) {}
+
     const rec = attendance.find(a => a.date === today && a.employee_id === empId && !a.check_out);
     if (rec) {
       const hours = Math.round(((clockTime - new Date(rec.check_in)) / 3600000) * 100) / 100;
-      await db("attendance", "PATCH", { check_out: clockTime.toISOString(), hours_worked: hours }, `?id=eq.${rec.id}`);
+      await db("attendance", "PATCH", {
+        check_out: clockTime.toISOString(),
+        hours_worked: hours,
+        checkout_gps_lat: outLoc?.lat || null,
+        checkout_gps_lng: outLoc?.lng || null,
+        checkout_photo: outPhoto || null,
+      }, `?id=eq.${rec.id}`);
     }
     setClockedIn(false); setClockInTime(null); setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
     await loadAll();
@@ -898,13 +913,15 @@ export default function App() {
                     <th>{T("Check Out", "خروج")}</th>
                     <th>{T("Hours", "ساعات")}</th>
                     <th>{T("Location", "الموقع")}</th>
-                    <th>{T("GPS Coordinates", "إحداثيات GPS")}</th>
+                    <th>{T("In GPS", "GPS دخول")}</th>
+                    <th>{T("Out GPS", "GPS خروج")}</th>
                     <th>{T("Status", "الحالة")}</th>
-                    <th>{T("Photo", "صورة")}</th>
+                    <th>{T("In Photo", "صورة دخول")}</th>
+                    <th>{T("Out Photo", "صورة خروج")}</th>
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0
-                      ? <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>{T("No records found", "لا توجد سجلات")}</td></tr>
+                      ? <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>{T("No records found", "لا توجد سجلات")}</td></tr>
                       : filtered.map((a, i) => {
                         const emp = employees.find(e => e.id === a.employee_id);
                         return (
@@ -915,9 +932,11 @@ export default function App() {
                             <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                             <td>{a.hours_worked ? `${a.hours_worked}h` : "—"}</td>
                             <td>{a.location_label ? <span className="badge blue">{a.location_label}</span> : "—"}</td>
-                            <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(5)}, ${Number(a.gps_lng).toFixed(5)}` : "—"}</td>
+                            <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
+                            <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.checkout_gps_lat ? `${Number(a.checkout_gps_lat).toFixed(4)}, ${Number(a.checkout_gps_lng).toFixed(4)}` : "—"}</td>
                             <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" ? "yellow" : "red"}`}>{a.status}</span></td>
-                            <td>{a.face_photo ? <img src={a.face_photo} alt="face" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
+                            <td>{a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
+                            <td>{a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—"}</td>
                           </tr>
                         );
                       })}
