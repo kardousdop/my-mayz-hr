@@ -1751,39 +1751,50 @@ export default function App() {
                 else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
               }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
               <Btn color="success" onClick={() => {
+                // Get last day of current month as disbursement date
+                const disbDate = new Date(thisYear, new Date().getMonth() + 1, 0);
+                const dateStr = disbDate.toISOString().split("T")[0]; // YYYY-MM-DD
+
                 const rows = [
-                  ["Full Name", "Mobile No.", "Profession", "Location ID", "Custom ID", "Card Model", "myMayz EMP Code", "Net Salary (EGP)", "Month", "Year", "Notes"]
+                  ["Full Name", "Mobile No.", "Profession", "Location ID", "Custom ID", "Card Model", "Amount", "Date"]
                 ];
-                // Check if any employee is missing payment info
+
                 const missing = [];
                 myPayroll.forEach(p => {
                   const emp = employees.find(e => e.id === p.employee_id);
                   if (!emp) return;
-                  if (!emp.payment_id) missing.push(emp.name);
                   const net = Number(p.net_salary) || 0;
+                  if (net <= 0) return; // skip employees with no salary
+                  if (!emp.payment_id) missing.push(emp.name);
                   rows.push([
-                    emp.name || "",
-                    emp.payment_mobile || emp.phone || "+20XXXXXXXXX",
-                    emp.position || emp.role || "Employee",
-                    "",                           // Location ID — set in payment software
-                    emp.payment_id || "",         // ✅ Payment company ID auto-filled
-                    "",                           // Card Model
-                    emp.employee_code || "",      // ✅ Our EMP code
-                    net,
-                    p.month || thisMonth,
-                    p.year || thisYear,
-                    p.loan_deduction > 0 ? `Loan: -${p.loan_deduction} EGP` : ""
+                    emp.name || "",                           // Full Name → Payee identifier
+                    emp.payment_mobile || emp.phone || "",   // Mobile No.
+                    emp.position || emp.role || "Employee",  // Profession
+                    "",                                       // Location ID
+                    emp.payment_id || "",                    // Custom ID (NID / payment company ID)
+                    "",                                       // Card Model
+                    net,                                      // Amount → Total Payroll
+                    dateStr,                                  // Date → disbursement date
                   ]);
                 });
+
                 if (missing.length > 0) {
-                  alert(T(`⚠️ These employees are missing Payment ID:\n${missing.join(", ")}\n\nPlease add their Payment IDs in Employees → Edit before exporting.`, `⚠️ هؤلاء الموظفون ليس لديهم كود دفع:\n${missing.join(", ")}\n\nيرجى إضافة كود الدفع في الموظفون → تعديل قبل التصدير.`));
+                  const cont = window.confirm(T(
+                    `⚠️ These employees are missing Payment ID:\n${missing.join("\n")}\n\nExport anyway? (their Custom ID will be empty)`,
+                    `⚠️ هؤلاء الموظفون ليس لديهم كود دفع:\n${missing.join("\n")}\n\nتصدير على أي حال؟ (سيكون Custom ID فارغاً)`
+                  ));
+                  if (!cont) return;
                 }
-                const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+                const csv = rows.map(r =>
+                  r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
+                ).join("\n");
+
                 const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `myMayz_Payment_${thisMonth}_${thisYear}.csv`;
+                a.download = `Payee_file_${thisMonth}_${thisYear}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}>📥 {T("Export Payment File", "تصدير ملف الدفع")}</Btn>
