@@ -1186,119 +1186,94 @@ export default function App() {
         </Modal>
 
         {/* Edit Salary Modal */}
-        <Modal show={activeModal === "editSalary"} onClose={closeModal} title={T("💰 Edit Salary & Bonuses", "💰 تعديل الراتب والمكافآت")} width={580}>
+        <Modal show={activeModal === "editSalary"} onClose={closeModal} title={T("💰 Edit Salary", "💰 تعديل الراتب")}>
           <div className="info-box">
-            <strong>{modalData.name}</strong> — {modalData.employee_code} · {modalData.department}
+            <strong>{modalData.name}</strong> — {modalData.employee_code}
           </div>
 
-          {/* Live salary breakdown */}
-          {(() => {
-            const base = Number(modalData.base_salary || modalData.salary || 0);
-            const allowances = Number(modalData.allowances || 0);
-            const bonuses = Number(modalData.bonuses || 0);
-            const deductions = Number(modalData.deductions || 0);
-            const tax = Number(modalData.tax || 0);
-            const insurance = Number(modalData.insurance || 0);
-            const gross = base + allowances + bonuses;
-            const totalDed = deductions + tax + insurance;
-            const net = gross - totalDed;
-            return (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  {/* Additions */}
-                  <div style={{ background: "var(--okb)", border: "1px solid var(--ok)", borderRadius: 8, padding: 12 }}>
-                    <div style={{ fontSize: 12, color: "var(--ok)", fontWeight: 700, marginBottom: 8 }}>➕ {T("ADDITIONS", "الإضافات")}</div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>{T("Base Salary", "الراتب الأساسي")}</label>
-                      <input type="number" value={base || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, base_salary: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>{T("Allowances", "البدلات")}</label>
-                      <input type="number" value={allowances || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, allowances: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 12 }}>{T("Bonuses", "المكافآت")}</label>
-                      <input type="number" value={bonuses || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, bonuses: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--ok)", fontSize: 13, fontWeight: 700, color: "var(--ok)" }}>
-                      = {gross.toLocaleString()} EGP
-                    </div>
-                  </div>
+          {/* Green additions box */}
+          <div style={{ background: "var(--okb)", border: "1px solid var(--ok)", borderRadius: 8, padding: 14, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ok)", fontWeight: 700, marginBottom: 10 }}>➕ {T("ADDITIONS", "الإضافات")}</div>
+            <div className="form-row">
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Base Salary", "الراتب الأساسي")}</label>
+                <input type="number" value={modalData.base_salary ?? modalData.salary ?? 0}
+                  onChange={e => setModalData({ ...modalData, base_salary: +e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Allowances", "البدلات")}</label>
+                <input type="number" value={modalData.allowances ?? 0}
+                  onChange={e => setModalData({ ...modalData, allowances: +e.target.value })} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label style={{ fontSize: 12 }}>{T("Bonuses", "المكافآت")}</label>
+              <input type="number" value={modalData.bonuses ?? 0}
+                onChange={e => setModalData({ ...modalData, bonuses: +e.target.value })} />
+            </div>
+          </div>
 
-                  {/* Deductions */}
-                  <div style={{ background: "var(--errb)", border: "1px solid var(--err)", borderRadius: 8, padding: 12 }}>
-                    <div style={{ fontSize: 12, color: "var(--err)", fontWeight: 700, marginBottom: 8 }}>➖ {T("DEDUCTIONS", "الخصومات")}</div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>{T("Deductions", "خصومات أخرى")}</label>
-                      <input type="number" value={deductions || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, deductions: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>{T("Tax", "الضريبة")}</label>
-                      <input type="number" value={tax || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, tax: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 12 }}>{T("Insurance", "التأمين")}</label>
-                      <input type="number" value={insurance || ""} placeholder="0"
-                        onChange={e => setModalData({ ...modalData, insurance: +e.target.value })}
-                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
-                    </div>
-                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--err)", fontSize: 13, fontWeight: 700, color: "var(--err)" }}>
-                      = -{totalDed.toLocaleString()} EGP
-                    </div>
-                  </div>
-                </div>
+          {/* Red deductions box */}
+          <div style={{ background: "var(--errb)", border: "1px solid var(--err)", borderRadius: 8, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--err)", fontWeight: 700, marginBottom: 10 }}>➖ {T("DEDUCTIONS", "الخصومات")}</div>
+            <div className="form-row">
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Deductions", "خصومات")}</label>
+                <input type="number" value={modalData.deductions ?? 0}
+                  onChange={e => setModalData({ ...modalData, deductions: +e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Tax", "الضريبة")}</label>
+                <input type="number" value={modalData.tax ?? 0}
+                  onChange={e => setModalData({ ...modalData, tax: +e.target.value })} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label style={{ fontSize: 12 }}>{T("Insurance", "التأمين")}</label>
+              <input type="number" value={modalData.insurance ?? 0}
+                onChange={e => setModalData({ ...modalData, insurance: +e.target.value })} />
+            </div>
+          </div>
 
-                {/* Net Salary */}
-                <div className="net-salary-box">
-                  <div style={{ fontSize: 12, color: "var(--t2)", marginBottom: 4 }}>{gross.toLocaleString()} − {totalDed.toLocaleString()} =</div>
-                  <div className="amount" style={{ fontSize: 36 }}>{net.toLocaleString()} EGP</div>
-                  <div className="label">🎯 {T("Net Monthly Salary", "صافي الراتب الشهري")}</div>
-                </div>
+          {/* Net Salary */}
+          <div className="net-salary-box">
+            <div style={{ fontSize: 13, color: "var(--t2)", marginBottom: 4 }}>
+              {((modalData.base_salary ?? modalData.salary ?? 0) + (modalData.allowances ?? 0) + (modalData.bonuses ?? 0)).toLocaleString()} − {((modalData.deductions ?? 0) + (modalData.tax ?? 0) + (modalData.insurance ?? 0)).toLocaleString()} =
+            </div>
+            <div className="amount">
+              {((modalData.base_salary ?? modalData.salary ?? 0) + (modalData.allowances ?? 0) + (modalData.bonuses ?? 0) - (modalData.deductions ?? 0) - (modalData.tax ?? 0) - (modalData.insurance ?? 0)).toLocaleString()} EGP
+            </div>
+            <div className="label">🎯 {T("Net Monthly Salary", "صافي الراتب الشهري")}</div>
+          </div>
 
-                <div className="form-actions">
-                  <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
-                  <Btn color="primary" disabled={saving} onClick={async () => {
-                    setSaving(true);
-                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-                    const curMonth = months[new Date().getMonth()];
-                    const curYear = new Date().getFullYear();
+          <div className="form-actions">
+            <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+            <Btn color="primary" disabled={saving} onClick={async () => {
+              setSaving(true);
+              const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+              const base = Number(modalData.base_salary ?? modalData.salary ?? 0);
+              const allowances = Number(modalData.allowances ?? 0);
+              const bonuses = Number(modalData.bonuses ?? 0);
+              const deductions = Number(modalData.deductions ?? 0);
+              const tax = Number(modalData.tax ?? 0);
+              const insurance = Number(modalData.insurance ?? 0);
+              const net = base + allowances + bonuses - deductions - tax - insurance;
+              const curMonth = months[new Date().getMonth()];
+              const curYear = new Date().getFullYear();
 
-                    // 1. Save salary breakdown to employee record
-                    await db("employees", "PATCH", {
-                      salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net,
-                    }, `?id=eq.${modalData.id}`);
+              // Save to employee record
+              await db("employees", "PATCH", { salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${modalData.id}`);
 
-                    // 2. Auto-create or update payroll record for current month
-                    const existingPayroll = payroll.find(p =>
-                      p.employee_id === modalData.id && p.month === curMonth && p.year === curYear
-                    );
-                    if (existingPayroll) {
-                      await db("payroll", "PATCH", {
-                        base_salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net, status: "pending",
-                      }, `?id=eq.${existingPayroll.id}`);
-                    } else {
-                      await db("payroll", "POST", {
-                        employee_id: modalData.id, month: curMonth, year: curYear,
-                        base_salary: base, allowances, bonuses, deductions, tax, insurance,
-                        loan_deduction: 0, net_salary: net, status: "pending",
-                      });
-                    }
-                    await loadAll(); setSaving(false); closeModal();
-                  }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
-                </div>
-              </>
-            );
-          })()}
+              // Auto-create or update payroll for this month
+              const existing = payroll.find(p => p.employee_id === modalData.id && p.month === curMonth && p.year === curYear);
+              if (existing) {
+                await db("payroll", "PATCH", { base_salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${existing.id}`);
+              } else {
+                await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: 0, net_salary: net, status: "pending" });
+              }
+              await loadAll(); setSaving(false); closeModal();
+            }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
+          </div>
         </Modal>
       </div>
     );
