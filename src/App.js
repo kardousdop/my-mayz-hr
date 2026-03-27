@@ -44,37 +44,59 @@ function getGPS() {
 // ============================================================
 const FACEIO_PUBLIC_ID = "fioa9051";
 let faceioInstance = null;
+let faceioLoading = false;
+
+function loadFaceIOScript() {
+  return new Promise((resolve, reject) => {
+    if (window.faceIO) { resolve(); return; }
+    if (document.getElementById("faceio-js")) {
+      // Script tag exists, wait for it
+      let tries = 30;
+      const wait = setInterval(() => {
+        tries--;
+        if (window.faceIO) { clearInterval(wait); resolve(); }
+        else if (tries <= 0) { clearInterval(wait); reject(new Error("FaceIO script timeout")); }
+      }, 200);
+      return;
+    }
+    // Ensure modal div exists
+    if (!document.getElementById("faceio-modal")) {
+      const div = document.createElement("div");
+      div.id = "faceio-modal";
+      document.body.appendChild(div);
+    }
+    // Load script
+    const script = document.createElement("script");
+    script.id = "faceio-js";
+    script.src = "https://cdn.faceio.net/fio.js";
+    script.onload = () => {
+      let tries = 20;
+      const wait = setInterval(() => {
+        tries--;
+        if (window.faceIO) { clearInterval(wait); resolve(); }
+        else if (tries <= 0) { clearInterval(wait); reject(new Error("FaceIO not available after load")); }
+      }, 150);
+    };
+    script.onerror = () => reject(new Error("Failed to load FaceIO script"));
+    document.head.appendChild(script);
+  });
+}
 
 async function getFaceIO() {
   if (faceioInstance) return faceioInstance;
-  return new Promise((resolve, reject) => {
-    let tries = 50;
-    const check = setInterval(() => {
-      tries--;
-      if (window.faceIO) {
-        clearInterval(check);
-        try {
-          faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
-          resolve(faceioInstance);
-        } catch (e) { faceioInstance = null; reject(e); }
-      } else if (tries <= 0) {
-        clearInterval(check);
-        reject(new Error("FaceIO not loaded"));
-      }
-    }, 100);
-  });
+  await loadFaceIOScript();
+  faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
+  return faceioInstance;
 }
 
 async function verifyFace() {
   const fio = await getFaceIO();
   const enrolled = localStorage.getItem("faceio_enrolled_" + FACEIO_PUBLIC_ID);
   if (!enrolled) {
-    // First time — enroll face
     const result = await fio.enroll({ locale: "auto", payload: { name: "Ahmed Kardous" } });
     localStorage.setItem("faceio_enrolled_" + FACEIO_PUBLIC_ID, result.facialId);
     return { facialId: result.facialId, enrolled: true };
   } else {
-    // Returning — authenticate
     const result = await fio.authenticate({ locale: "auto" });
     return { facialId: result.facialId, enrolled: false };
   }
@@ -212,8 +234,8 @@ const css = `
   .verify-step.error{background:var(--errb)}.verify-step.success{background:var(--okb)}
   .verify-icon{font-size:16px;flex-shrink:0}
   .gps-coords{font-size:11px;color:var(--t3);margin-top:4px}
-  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;overflow-y:auto}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:560px;max-width:calc(100vw - 40px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative;}
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:32px;width:100%;max-width:540px;max-height:85vh;overflow-y:auto;position:relative;}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
   .modal-title{font-size:18px;font-weight:700}
   .form-group{margin-bottom:16px}
@@ -472,7 +494,7 @@ export default function App() {
       const code = e.code !== undefined ? e.code : e.message || String(e);
       setPhotoErr(`Face verification failed (${code}). Please try again.`);
       setVerifying(null);
-      faceioInstance = null;
+      faceioInstance = null; // reset so next attempt loads fresh
       return;
     }
 
