@@ -1802,16 +1802,21 @@ export default function App() {
   // ============================================================
   // LOANS
   // ============================================================
-  const renderLoans = () => (
+  const renderLoans = () => {
+    const myId = currentEmployee?.id;
+    const visibleLoans = role === "employee" ? loans.filter(l => l.employee_id === myId) : loans;
+    return (
     <div className="fade-in">
       <div className="card-header" style={{ marginBottom: 20 }}>
         <div className="card-title">💳 {T("Employee Loans", "قروض الموظفين")}</div>
-        <Btn color="primary" onClick={() => openModal("addLoan", { employee_id: employees[0]?.id, amount: 0, monthly_deduction: 0, reason: "" })}>➕ {T("New Loan", "قرض جديد")}</Btn>
+        {(role === "admin" || role === "hr" || role === "accountant") && (
+          <Btn color="primary" onClick={() => openModal("addLoan", { employee_id: employees[0]?.id, amount: 0, monthly_deduction: 0, reason: "" })}>➕ {T("New Loan", "قرض جديد")}</Btn>
+        )}
       </div>
 
-      {loans.length === 0
+      {visibleLoans.length === 0
         ? <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--t3)" }}>{T("No loans recorded", "لا توجد قروض")}</div>
-        : loans.map((loan, i) => {
+        : visibleLoans.map((loan, i) => {
           const emp = employees.find(e => e.id === loan.employee_id);
           const paid = loan.amount - loan.remaining;
           const pct = Math.min(100, Math.round((paid / loan.amount) * 100)) || 0;
@@ -1820,7 +1825,7 @@ export default function App() {
             <div className="loan-card" key={i}>
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>{emp?.name || "Unknown"}</div>
+                  {role !== "employee" && <div style={{ fontWeight: 600, fontSize: 15 }}>{emp?.name || "Unknown"}</div>}
                   <div style={{ color: "var(--t3)", fontSize: 13, marginTop: 4 }}>{loan.reason}</div>
                   <div style={{ color: "var(--t3)", fontSize: 12, marginTop: 4 }}>📅 {T("Started", "بدأ")}: {loan.start_date}</div>
                 </div>
@@ -1875,18 +1880,20 @@ export default function App() {
       </Modal>
     </div>
   );
+  };
 
   // ============================================================
   // SELF SERVICE
   // ============================================================
   const renderSelfService = () => {
-    const myEmp = employees[0];
-    const myExcuses = excuses.filter(e => e.employee_id === myEmp?.id);
-    const myLeaves = leaveReqs.filter(l => l.employee_id === myEmp?.id);
-    const myLoans = loans.filter(l => l.employee_id === myEmp?.id && l.status === "active");
-    const pendingEx = excuses.filter(e => e.status === "pending");
-    const pendingLv = leaveReqs.filter(l => l.status === "pending");
-    const pendingLn = loans.filter(l => l.status === "pending");
+    const myEmp = currentEmployee || employees.find(e => e.id === currentEmployee?.id) || employees[0];
+    const myId = myEmp?.id;
+    const myExcuses = excuses.filter(e => e.employee_id === myId);
+    const myLeaves = leaveReqs.filter(l => l.employee_id === myId);
+    const myLoans = loans.filter(l => l.employee_id === myId && l.status === "active");
+    const pendingEx = (role === "admin" || role === "hr") ? excuses.filter(e => e.status === "pending") : myExcuses.filter(e => e.status === "pending");
+    const pendingLv = (role === "admin" || role === "hr") ? leaveReqs.filter(l => l.status === "pending") : myLeaves.filter(l => l.status === "pending");
+    const pendingLn = (role === "admin" || role === "hr" || role === "accountant") ? loans.filter(l => l.status === "pending") : [];
 
     return (
       <div className="fade-in">
@@ -1972,7 +1979,7 @@ export default function App() {
             <div className="form-actions">
               <Btn color="primary" disabled={saving || !modalData.date || !modalData.type || !modalData.reason} onClick={async () => {
                 setSaving(true);
-                await db("excuse_requests", "POST", { ...modalData, employee_id: myEmp?.id, status: "pending" });
+                await db("excuse_requests", "POST", { ...modalData, employee_id: myId, status: "pending" });
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Request", "📨 إرسال الطلب")}</Btn>
             </div>
@@ -2004,7 +2011,7 @@ export default function App() {
               <Btn color="primary" disabled={saving || !modalData.type || !modalData.start_date || !modalData.end_date} onClick={async () => {
                 setSaving(true);
                 const days = Math.max(1, Math.ceil((new Date(modalData.end_date) - new Date(modalData.start_date)) / 86400000) + 1);
-                await db("leave_requests", "POST", { ...modalData, employee_id: myEmp?.id, days, status: "pending" });
+                await db("leave_requests", "POST", { ...modalData, employee_id: myId, days, status: "pending" });
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Request", "📨 إرسال الطلب")}</Btn>
             </div>
@@ -2027,7 +2034,7 @@ export default function App() {
             <div className="form-actions">
               <Btn color="primary" disabled={saving || myLoans.length > 0 || !modalData.amount || !modalData.monthly_deduction || !modalData.reason} onClick={async () => {
                 setSaving(true);
-                await db("loans", "POST", { ...modalData, employee_id: myEmp?.id, status: "pending" });
+                await db("loans", "POST", { ...modalData, employee_id: myId, status: "pending" });
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Loan Request", "📨 إرسال طلب القرض")}</Btn>
             </div>
