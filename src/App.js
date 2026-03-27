@@ -1921,12 +1921,12 @@ export default function App() {
       <div className="fade-in">
         <div className="tab-bar">
           {[
-            { id: "overview", label: T("🏠 Overview", "🏠 نظرة عامة") },
-            { id: "excuse", label: T("⏰ Request Excuse", "⏰ طلب إذن") },
-            { id: "leave", label: T("🏖️ Request Leave", "🏖️ طلب إجازة") },
-            { id: "loanreq", label: T("💰 Request Loan", "💰 طلب قرض") },
-            { id: "manage", label: T("👔 Admin Approvals", "👔 موافقات الإدارة") + ((pendingEx.length + pendingLv.length + pendingLn.length) > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : "") },
-          ].map(tab => (
+            { id: "overview", label: T("🏠 Overview", "🏠 نظرة عامة"), show: true },
+            { id: "excuse", label: T("⏰ Request Excuse", "⏰ طلب إذن"), show: true },
+            { id: "leave", label: T("🏖️ Request Leave", "🏖️ طلب إجازة"), show: true },
+            { id: "loanreq", label: T("💰 Request Loan", "💰 طلب قرض"), show: true },
+            { id: "manage", label: T("👔 Admin Approvals", "👔 موافقات الإدارة") + ((pendingEx.length + pendingLv.length + pendingLn.length) > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : ""), show: role === "admin" || role === "hr" || role === "accountant" },
+          ].filter(tab => tab.show).map(tab => (
             <button key={tab.id} className={`tab ${ssTab === tab.id ? "active" : ""}`} onClick={() => setSsTab(tab.id)}>{tab.label}</button>
           ))}
         </div>
@@ -2065,75 +2065,97 @@ export default function App() {
 
         {ssTab === "manage" && (
           <div>
-            {/* Pending Excuses */}
-            <div className="card-title" style={{ marginBottom: 16 }}>⏰ {T("Pending Excuse Requests", "طلبات الإذن المعلقة")} ({pendingEx.length})</div>
-            {pendingEx.length === 0
-              ? <div className="info-box">{T("No pending excuse requests", "لا توجد طلبات إذن معلقة")}</div>
-              : pendingEx.map((ex, i) => {
-                const emp = employees.find(e => e.id === ex.employee_id);
-                return (
-                  <div className="req-card" key={i}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{emp?.name} — {ex.type}</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{ex.date} · {ex.from_time} → {ex.to_time}</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)" }}>{ex.reason}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Btn size="sm" color="success" onClick={async () => { await db("excuse_requests", "PATCH", { status: "approved" }, `?id=eq.${ex.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
-                      <Btn size="sm" color="danger" onClick={async () => { await db("excuse_requests", "PATCH", { status: "rejected" }, `?id=eq.${ex.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
-                    </div>
-                  </div>
-                );
-              })}
-
-            {/* Pending Leaves */}
-            <div className="card-title" style={{ margin: "24px 0 16px" }}>🏖️ {T("Pending Leave Requests", "طلبات الإجازة المعلقة")} ({pendingLv.length})</div>
-            {pendingLv.length === 0
-              ? <div className="info-box">{T("No pending leave requests", "لا توجد طلبات إجازة معلقة")}</div>
-              : pendingLv.map((lv, i) => {
-                const emp = employees.find(e => e.id === lv.employee_id);
-                return (
-                  <div className="req-card" key={i}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{emp?.name} — {lv.type} ({lv.days} {T("days", "أيام")})</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{lv.start_date} → {lv.end_date}</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)" }}>{lv.reason}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Btn size="sm" color="success" onClick={async () => { await db("leave_requests", "PATCH", { status: "approved" }, `?id=eq.${lv.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
-                      <Btn size="sm" color="danger" onClick={async () => { await db("leave_requests", "PATCH", { status: "rejected" }, `?id=eq.${lv.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
-                    </div>
-                  </div>
-                );
-              })}
-
-            {/* Pending Loans */}
-            <div className="card-title" style={{ margin: "24px 0 16px" }}>💳 {T("Pending Loan Requests", "طلبات القروض المعلقة")} ({pendingLn.length})</div>
-            <div className="info-box" style={{ borderColor: "var(--info)", background: "var(--infob)" }}>
-              ℹ️ {T("When you approve a loan, the employee receives the amount. The monthly deduction will be automatically applied to their payroll.", "عند الموافقة على القرض، يتلقى الموظف المبلغ. سيتم تطبيق الخصم الشهري تلقائياً على راتبه.")}
+            {/* Role notice */}
+            <div className="info-box" style={{ marginBottom: 20, borderColor: "var(--acc)", background: "var(--accg)" }}>
+              {role === "accountant"
+                ? T("💰 As Accountant: you can view all requests. Loan payment activation is handled here.", "💰 كمحاسب: يمكنك عرض جميع الطلبات. تفعيل دفع القروض يتم من هنا.")
+                : T("👔 As Admin/HR: you can approve or reject all employee requests.", "👔 كمشرف/HR: يمكنك الموافقة أو رفض جميع طلبات الموظفين.")}
             </div>
+
+            {/* Pending Excuses — Admin & HR only */}
+            {(role === "admin" || role === "hr") && (
+              <>
+                <div className="card-title" style={{ marginBottom: 16 }}>⏰ {T("Pending Excuse Requests", "طلبات الإذن المعلقة")} ({pendingEx.length})</div>
+                {pendingEx.length === 0
+                  ? <div className="info-box">{T("No pending excuse requests", "لا توجد طلبات إذن معلقة")}</div>
+                  : pendingEx.map((ex, i) => {
+                    const emp = employees.find(e => e.id === ex.employee_id);
+                    return (
+                      <div className="req-card" key={i}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{emp?.name} — {ex.type}</div>
+                          <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{ex.date} · {ex.from_time} → {ex.to_time}</div>
+                          <div style={{ fontSize: 13, color: "var(--t3)" }}>{ex.reason}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Btn size="sm" color="success" onClick={async () => { await db("excuse_requests", "PATCH", { status: "approved" }, `?id=eq.${ex.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
+                          <Btn size="sm" color="danger" onClick={async () => { await db("excuse_requests", "PATCH", { status: "rejected" }, `?id=eq.${ex.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </>
+            )}
+
+            {/* Pending Leaves — Admin & HR only */}
+            {(role === "admin" || role === "hr") && (
+              <>
+                <div className="card-title" style={{ margin: "24px 0 16px" }}>🏖️ {T("Pending Leave Requests", "طلبات الإجازة المعلقة")} ({pendingLv.length})</div>
+                {pendingLv.length === 0
+                  ? <div className="info-box">{T("No pending leave requests", "لا توجد طلبات إجازة معلقة")}</div>
+                  : pendingLv.map((lv, i) => {
+                    const emp = employees.find(e => e.id === lv.employee_id);
+                    return (
+                      <div className="req-card" key={i}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{emp?.name} — {lv.type} ({lv.days} {T("days", "أيام")})</div>
+                          <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{lv.start_date} → {lv.end_date}</div>
+                          <div style={{ fontSize: 13, color: "var(--t3)" }}>{lv.reason}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Btn size="sm" color="success" onClick={async () => { await db("leave_requests", "PATCH", { status: "approved" }, `?id=eq.${lv.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
+                          <Btn size="sm" color="danger" onClick={async () => { await db("leave_requests", "PATCH", { status: "rejected" }, `?id=eq.${lv.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </>
+            )}
+
+            {/* Pending Loans — Admin/HR approve, Accountant sees payment status */}
+            <div className="card-title" style={{ margin: "24px 0 16px" }}>💳 {T("Pending Loan Requests", "طلبات القروض المعلقة")} ({pendingLn.length})</div>
+            {role === "accountant" && (
+              <div className="info-box" style={{ borderColor: "var(--warn)", background: "var(--warnb)" }}>
+                ⚠️ {T("Loan approval is handled by Admin/HR. As Accountant, you can view status and mark payments in the Loans page.", "الموافقة على القروض من صلاحية المشرف/HR. كمحاسب يمكنك متابعة الحالة وتسجيل الدفع من صفحة القروض.")}
+              </div>
+            )}
             {pendingLn.length === 0
               ? <div className="info-box">{T("No pending loan requests", "لا توجد طلبات قروض معلقة")}</div>
               : pendingLn.map((ln, i) => {
                 const emp = employees.find(e => e.id === ln.employee_id);
+                const canApprove = role === "admin" || role === "hr";
                 return (
                   <div className="req-card" key={i}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{emp?.name} — {Number(ln.amount).toLocaleString()} EGP</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>📅 {T("Start", "بداية")}: {ln.start_date}</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)" }}>💸 {Number(ln.monthly_deduction).toLocaleString()} EGP/{T("month", "شهر")} · ~{Math.ceil(ln.amount / ln.monthly_deduction)} {T("months", "أشهر")}</div>
+                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>📅 {ln.start_date} · 💸 {Number(ln.monthly_deduction).toLocaleString()} EGP/{T("month", "شهر")}</div>
                       <div style={{ fontSize: 13, color: "var(--t3)" }}>📝 {ln.reason}</div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <Btn size="sm" color="success" onClick={async () => {
-                        await db("loans", "PATCH", { status: "active", approved_by: "Ahmed Kardous" }, `?id=eq.${ln.id}`);
-                        loadAll();
-                      }}>✅ {T("Approve & Activate", "موافقة وتفعيل")}</Btn>
-                      <Btn size="sm" color="danger" onClick={async () => {
-                        await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`);
-                        loadAll();
-                      }}>❌ {T("Reject", "رفض")}</Btn>
-                    </div>
+                    {canApprove && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <Btn size="sm" color="success" onClick={async () => {
+                          await db("loans", "PATCH", { status: "active", approved_by: currentEmployee?.name || "Admin" }, `?id=eq.${ln.id}`);
+                          loadAll();
+                        }}>✅ {T("Approve", "موافقة")}</Btn>
+                        <Btn size="sm" color="danger" onClick={async () => {
+                          await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`);
+                          loadAll();
+                        }}>❌ {T("Reject", "رفض")}</Btn>
+                      </div>
+                    )}
+                    {!canApprove && (
+                      <span className="badge yellow">⏳ {T("Pending Admin Approval", "بانتظار موافقة المشرف")}</span>
+                    )}
                   </div>
                 );
               })}
