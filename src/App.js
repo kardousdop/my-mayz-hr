@@ -1096,6 +1096,7 @@ export default function App() {
                 <th>{T("Position", "المنصب")}</th>
                 <th>{T("Salary", "الراتب")}</th>
                 <th>{T("Role", "الدور")}</th>
+                <th>{T("Payment ID", "كود الدفع")}</th>
                 <th>{T("Status", "الحالة")}</th>
                 <th>{T("Actions", "إجراءات")}</th>
               </tr></thead>
@@ -1149,6 +1150,15 @@ export default function App() {
                         })()}
                       </td>
                       <td><span className={`badge ${emp.role === "admin" ? "purple" : emp.role === "hr" ? "green" : emp.role === "accountant" ? "yellow" : "blue"}`}>{emp.role || "employee"}</span></td>
+                      <td style={{ textAlign: "center" }}>
+                        {emp.payment_id
+                          ? <div>
+                              <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--ok)", fontWeight: 600 }}>{emp.payment_id}</div>
+                              <div style={{ fontSize: 10, color: "var(--t3)" }}>{emp.payment_mobile || ""}</div>
+                            </div>
+                          : <span style={{ fontSize: 11, color: "var(--err)" }}>⚠️ {T("Not linked", "غير مرتبط")}</span>
+                        }
+                      </td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1257,6 +1267,23 @@ export default function App() {
               💡 {T("Select all locations where this employee is allowed to clock in. If they clock in from elsewhere, they must explain why.", "اختر جميع المواقع المسموح للموظف بتسجيل الحضور منها. إذا سجّل من مكان آخر يجب أن يوضح السبب.")}
             </div>
           </div>
+          {/* Payment Company Info */}
+          <div style={{ background: "var(--infob)", border: "1px solid var(--info)", borderRadius: 8, padding: 14, marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--info)", fontWeight: 700, marginBottom: 10 }}>💳 {T("Payment Company Info", "بيانات شركة الدفع")}</div>
+            <div className="form-row">
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Payment Company ID", "كود شركة الدفع")}</label>
+                <input value={modalData.payment_id || ""} onChange={e => setModalData({ ...modalData, payment_id: e.target.value })} placeholder="e.g. 29111262102853" style={{ fontFamily: "monospace", letterSpacing: 1 }} />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>{T("Payment Mobile", "موبايل شركة الدفع")}</label>
+                <input value={modalData.payment_mobile || ""} onChange={e => setModalData({ ...modalData, payment_mobile: e.target.value })} placeholder="+201XXXXXXXXX" />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--info)", marginTop: 4 }}>
+              💡 {T("This ID links our EMP code to the payment company's system for automatic salary export.", "هذا الكود يربط كود الموظف لدينا بنظام شركة الدفع للتصدير التلقائي للرواتب.")}
+            </div>
+          </div>
           <div className="form-actions">
             <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
             <Btn color="primary" disabled={saving} onClick={async () => {
@@ -1273,6 +1300,8 @@ export default function App() {
                 department: modalData.department, position: modalData.position,
                 salary: modalData.salary, status: modalData.status,
                 approved_locations: JSON.stringify(locs),
+                payment_id: modalData.payment_id || null,
+                payment_mobile: modalData.payment_mobile || null,
               }, `?id=eq.${modalData.id}`);
               await loadAll(); setSaving(false); closeModal();
             }}>{saving ? <span className="spinner" /> : T("Save Changes", "حفظ التغييرات")}</Btn>
@@ -1721,6 +1750,43 @@ export default function App() {
                 if (created > 0) alert(T(`✅ Generated ${created} payslips for ${thisMonth} ${thisYear}`, `✅ تم إنشاء ${created} مسير رواتب لـ ${thisMonth} ${thisYear}`));
                 else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
               }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
+              <Btn color="success" onClick={() => {
+                const rows = [
+                  ["Full Name", "Mobile No.", "Profession", "Location ID", "Custom ID", "Card Model", "myMayz EMP Code", "Net Salary (EGP)", "Month", "Year", "Notes"]
+                ];
+                // Check if any employee is missing payment info
+                const missing = [];
+                myPayroll.forEach(p => {
+                  const emp = employees.find(e => e.id === p.employee_id);
+                  if (!emp) return;
+                  if (!emp.payment_id) missing.push(emp.name);
+                  const net = Number(p.net_salary) || 0;
+                  rows.push([
+                    emp.name || "",
+                    emp.payment_mobile || emp.phone || "+20XXXXXXXXX",
+                    emp.position || emp.role || "Employee",
+                    "",                           // Location ID — set in payment software
+                    emp.payment_id || "",         // ✅ Payment company ID auto-filled
+                    "",                           // Card Model
+                    emp.employee_code || "",      // ✅ Our EMP code
+                    net,
+                    p.month || thisMonth,
+                    p.year || thisYear,
+                    p.loan_deduction > 0 ? `Loan: -${p.loan_deduction} EGP` : ""
+                  ]);
+                });
+                if (missing.length > 0) {
+                  alert(T(`⚠️ These employees are missing Payment ID:\n${missing.join(", ")}\n\nPlease add their Payment IDs in Employees → Edit before exporting.`, `⚠️ هؤلاء الموظفون ليس لديهم كود دفع:\n${missing.join(", ")}\n\nيرجى إضافة كود الدفع في الموظفون → تعديل قبل التصدير.`));
+                }
+                const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `myMayz_Payment_${thisMonth}_${thisYear}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}>📥 {T("Export Payment File", "تصدير ملف الدفع")}</Btn>
               <Btn color="outline" onClick={() => openModal("createPayroll", { month: thisMonth, year: thisYear, employee_id: employees[0]?.id, base_salary: 0, allowances: 0, bonuses: 0, deductions: 0, tax: 0, insurance: 0, loan_deduction: 0 })}>➕ {T("Manual Payslip", "مسير يدوي")}</Btn>
             </div>
           )}
