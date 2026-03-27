@@ -301,48 +301,129 @@ function Btn({ onClick, disabled, color = "outline", size = "normal", children }
 }
 
 // ============================================================
-// LOGIN
+// PORTAL SELECTOR
 // ============================================================
-function LoginPage({ lang, setLang, onLogin }) {
+function PortalSelector({ lang, setLang, onSelect }) {
+  const ar = lang === "ar";
+  const T = (en, a) => ar ? a : en;
+  const portals = [
+    { role: "admin", icon: "🛡️", title: T("Admin Portal", "بوابة المشرف"), desc: T("Full system access", "وصول كامل للنظام"), color: "#6366f1" },
+    { role: "hr", icon: "👥", title: T("HR Portal", "بوابة الموارد البشرية"), desc: T("Employee & attendance management", "إدارة الموظفين والحضور"), color: "#10b981" },
+    { role: "accountant", icon: "💰", title: T("Accountant Portal", "بوابة المحاسب"), desc: T("Payroll, loans & financials", "الرواتب والقروض والمالية"), color: "#f59e0b" },
+    { role: "employee", icon: "🙋", title: T("Employee Portal", "بوابة الموظف"), desc: T("My profile, attendance & requests", "ملفي وحضوري وطلباتي"), color: "#3b82f6" },
+  ];
+  return (
+    <div className={`login-page ${ar ? "rtl" : ""}`}>
+      <div className="login-card fade-in" style={{ maxWidth: 460 }}>
+        <div className="login-logo">my<span>Mayz</span> HR</div>
+        <div className="login-tagline">{T("Smart HR Automation Platform", "منصة أتمتة الموارد البشرية الذكية")}</div>
+        <div style={{ fontSize: 13, color: "var(--t3)", textAlign: "center", marginBottom: 20 }}>{T("Select your portal to continue", "اختر بوابتك للمتابعة")}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {portals.map(p => (
+            <button key={p.role} onClick={() => onSelect(p.role)}
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s", textAlign: ar ? "right" : "left" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = p.color; e.currentTarget.style.background = "var(--card2)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg2)"; }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: p.color + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{p.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: "var(--t1)", fontSize: 14 }}>{p.title}</div>
+                <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 2 }}>{p.desc}</div>
+              </div>
+              <div style={{ color: "var(--t3)", fontSize: 18 }}>{ar ? "←" : "→"}</div>
+            </button>
+          ))}
+        </div>
+        <div className="login-lang" style={{ marginTop: 20 }}>
+          <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>English</button>
+          <button className={lang === "ar" ? "active" : ""} onClick={() => setLang("ar")}>العربية</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// LOGIN PAGE (role-specific)
+// ============================================================
+function LoginPage({ lang, setLang, role, onLogin, onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const ar = lang === "ar";
+  const T = (en, a) => ar ? a : en;
+
+  const roleInfo = {
+    admin: { icon: "🛡️", title: T("Admin Portal", "بوابة المشرف"), color: "#6366f1", placeholder: "hello@mymayz.com" },
+    hr: { icon: "👥", title: T("HR Portal", "بوابة الموارد البشرية"), color: "#10b981", placeholder: "hr@mymayz.com" },
+    accountant: { icon: "💰", title: T("Accountant Portal", "بوابة المحاسب"), color: "#f59e0b", placeholder: "accountant@mymayz.com" },
+    employee: { icon: "🙋", title: T("Employee Portal", "بوابة الموظف"), color: "#3b82f6", placeholder: "employee@mymayz.com" },
+  }[role] || {};
 
   const submit = async () => {
     setError(""); setLoading(true);
     try {
+      // Try Supabase Auth first
       const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (data.access_token) { onLogin("admin", data.user); return; }
+      if (data.access_token) {
+        // Get employee record by email to confirm role
+        const emps = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=*`);
+        const emp = emps?.[0];
+        const empRole = emp?.role || role;
+        // Verify role matches portal
+        if (role !== "admin" && empRole !== role && empRole !== "admin") {
+          setError(T(`This account does not have ${role} access.`, `هذا الحساب لا يملك صلاحية ${role}.`));
+          setLoading(false); return;
+        }
+        onLogin(empRole, data.user, emp); return;
+      }
     } catch (e) {}
-    if ((email === "hello@mymayz.com" && password === "Ghalia@0902") || (email === "admin@peopleflow.com" && password === "demo123")) {
-      onLogin("admin", { email, id: "demo" });
+
+    // Fallback credentials
+    const creds = {
+      admin: [{ email: "hello@mymayz.com", password: "Ghalia@0902" }, { email: "admin@peopleflow.com", password: "demo123" }],
+      hr: [{ email: "hr@mymayz.com", password: "hr123456" }],
+      accountant: [{ email: "accountant@mymayz.com", password: "acc123456" }],
+      employee: [{ email: "employee@mymayz.com", password: "emp123456" }, { email: "test@mymayz.com", password: "test1234" }],
+    };
+    const match = (creds[role] || []).find(c => c.email === email && c.password === password);
+    if (match) {
+      // Find employee by email
+      const emps = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=*`);
+      onLogin(role, { email, id: "demo" }, emps?.[0] || null);
     } else {
-      setError(lang === "ar" ? "فشل تسجيل الدخول. تحقق من البريد وكلمة المرور." : "Login failed. Check your credentials.");
+      setError(T("Login failed. Check your credentials.", "فشل تسجيل الدخول. تحقق من بياناتك."));
     }
     setLoading(false);
   };
 
   return (
-    <div className={`login-page ${lang === "ar" ? "rtl" : ""}`}>
+    <div className={`login-page ${ar ? "rtl" : ""}`}>
       <div className="login-card fade-in">
-        <div className="login-logo">my<span>Mayz</span> HR</div>
-        <div className="login-tagline">{lang === "ar" ? "منصة أتمتة الموارد البشرية الذكية" : "Smart HR Automation Platform"}</div>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 13, fontFamily: "inherit", marginBottom: 16, display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
+          ← {T("Back to portals", "العودة للبوابات")}
+        </button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 28 }}>{roleInfo.icon}</span>
+          <div className="login-logo" style={{ margin: 0 }}>my<span>Mayz</span> HR</div>
+        </div>
+        <div className="login-tagline" style={{ color: roleInfo.color, fontWeight: 600 }}>{roleInfo.title}</div>
         {error && <div className="login-error">{error}</div>}
         <div className="login-field">
-          <label>{lang === "ar" ? "البريد الإلكتروني" : "Email"}</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="hello@mymayz.com" />
+          <label>{T("Email", "البريد الإلكتروني")}</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={roleInfo.placeholder} />
         </div>
         <div className="login-field">
-          <label>{lang === "ar" ? "كلمة المرور" : "Password"}</label>
+          <label>{T("Password", "كلمة المرور")}</label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} />
         </div>
-        <button className="login-btn" onClick={submit} disabled={loading || !email || !password}>
-          {loading ? <><span className="spinner" />{lang === "ar" ? "جاري التحميل..." : "Loading..."}</> : lang === "ar" ? "تسجيل الدخول" : "Sign In"}
+        <button className="login-btn" onClick={submit} disabled={loading || !email || !password}
+          style={{ background: roleInfo.color }}>
+          {loading ? <><span className="spinner" />{T("Signing in...", "جاري الدخول...")}</> : T("Sign In", "تسجيل الدخول")}
         </button>
         <div className="login-lang">
           <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>English</button>
@@ -358,8 +439,19 @@ function LoginPage({ lang, setLang, onLogin }) {
 // ============================================================
 export default function App() {
   const [lang, setLang] = useState("en");
+  const [portal, setPortal] = useState(null); // null = portal selector
   const [loggedIn, setLoggedIn] = useState(false);
+  const [role, setRole] = useState("employee");
+  const [currentEmployee, setCurrentEmployee] = useState(null);
   const [page, setPage] = useState("dashboard");
+
+  // Set default page based on role when logged in
+  useEffect(() => {
+    if (loggedIn) {
+      if (role === "employee") setPage("attendance");
+      else setPage("dashboard");
+    }
+  }, [loggedIn, role]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -432,6 +524,22 @@ export default function App() {
   const openModal = (name, data = {}) => { setActiveModal(name); setModalData(data); };
   const closeModal = () => { setActiveModal(null); setModalData({}); };
 
+  const handleLogin = (r, user, emp) => {
+    setRole(r);
+    setCurrentEmployee(emp);
+    setLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    setLoggedIn(false);
+    setPortal(null);
+    setRole("employee");
+    setCurrentEmployee(null);
+    setClockedIn(false);
+    setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
+    setClockOutDone(false);
+  };
+
   // ============================================================
   // CLOCK IN / OUT
   // ============================================================
@@ -476,7 +584,7 @@ export default function App() {
 
   const doSaveClockIn = async (clockTime, loc, label, photoData) => {
     setVerifying("saving");
-    const empId = employees[0]?.id || null;
+    const empId = currentEmployee?.id || employees[0]?.id || null;
     const isLate = clockTime.getHours() > 8 || (clockTime.getHours() === 8 && clockTime.getMinutes() > 15);
     await db("attendance", "POST", {
       employee_id: empId,
@@ -1436,21 +1544,241 @@ export default function App() {
   // ============================================================
   // LAYOUT
   // ============================================================
-  if (!loggedIn) return <><style>{css}</style><LoginPage lang={lang} setLang={setLang} onLogin={(r, u) => { setLoggedIn(true); }} /></>;
+  if (!loggedIn) return (
+    <>
+      <style>{css}</style>
+      {!portal
+        ? <PortalSelector lang={lang} setLang={setLang} onSelect={setPortal} />
+        : <LoginPage lang={lang} setLang={setLang} role={portal} onLogin={handleLogin} onBack={() => setPortal(null)} />
+      }
+    </>
+  );
 
   const pendingBadge = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length + loans.filter(l => l.status === "pending").length;
 
-  const navItems = [
-    { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم") },
-    { id: "employees", icon: "👥", label: T("Employees", "الموظفون") },
-    { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور") },
-    { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب") },
-    { id: "loans", icon: "💳", label: T("Loans", "القروض") },
-    { id: "selfservice", icon: "🙋", label: T("Self-Service", "الخدمة الذاتية"), badge: pendingBadge || null },
-    { id: "settings", icon: "⚙️", label: T("Settings", "الإعدادات") },
+  // Role-based navigation
+  const allNavItems = [
+    { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
+    { id: "analytics", icon: "📊", label: T("Analytics", "التحليلات"), roles: ["admin","hr","accountant"] },
+    { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"] },
+    { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور"), roles: ["admin","hr","accountant","employee"] },
+    { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant"] },
+    { id: "loans", icon: "💳", label: T("Loans", "القروض"), roles: ["admin","hr","accountant"] },
+    { id: "selfservice", icon: "🙋", label: T("Self-Service", "الخدمة الذاتية"), roles: ["admin","hr","employee"], badge: pendingBadge || null },
+    { id: "settings", icon: "⚙️", label: T("Settings", "الإعدادات"), roles: ["admin"] },
   ];
+  const navItems = allNavItems.filter(n => n.roles.includes(role));
 
-  const pages = { dashboard: renderDashboard, employees: renderEmployees, attendance: renderAttendance, payroll: renderPayroll, loans: renderLoans, selfservice: renderSelfService, settings: renderSettings };
+  // ============================================================
+  // ANALYTICS DASHBOARD
+  // ============================================================
+  const renderAnalytics = () => {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const today = new Date();
+
+    // Attendance rate per employee
+    const last30 = new Date(today - 30 * 86400000).toISOString().split("T")[0];
+    const recentAtt = attendance.filter(a => a.date >= last30);
+    const workdays = 22; // approx working days in a month
+
+    const empAttRate = employees.map(emp => {
+      const present = recentAtt.filter(a => a.employee_id === emp.id && (a.status === "present" || a.status === "late")).length;
+      const late = recentAtt.filter(a => a.employee_id === emp.id && a.status === "late").length;
+      const absent = workdays - present;
+      const hours = recentAtt.filter(a => a.employee_id === emp.id).reduce((s, a) => s + (Number(a.hours_worked) || 0), 0);
+      return { ...emp, present, late, absent: Math.max(0, absent), hours: hours.toFixed(1), rate: Math.round((present / workdays) * 100) };
+    });
+
+    // Monthly late arrivals (last 6 months)
+    const lateByMonth = months.slice(Math.max(0, today.getMonth() - 5), today.getMonth() + 1).map((m, i) => {
+      const mi = (today.getMonth() - 5 + i + 12) % 12;
+      const yr = today.getFullYear() - (mi > today.getMonth() ? 1 : 0);
+      const key = `${yr}-${String(mi + 1).padStart(2, "0")}`;
+      return { month: m, count: attendance.filter(a => a.status === "late" && a.date?.startsWith(key)).length };
+    });
+
+    // On-time vs late this month
+    const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const thisMonthAtt = attendance.filter(a => a.date?.startsWith(thisMonth));
+    const onTime = thisMonthAtt.filter(a => a.status === "present").length;
+    const lateCount = thisMonthAtt.filter(a => a.status === "late").length;
+    const absentCount = thisMonthAtt.filter(a => a.status === "absent").length;
+    const totalThisMonth = onTime + lateCount + absentCount || 1;
+
+    // Dept headcount
+    const depts = {};
+    employees.forEach(e => { const d = e.department || "Other"; depts[d] = (depts[d] || 0) + 1; });
+
+    // Payroll breakdown
+    const totalBase = employees.reduce((s, e) => s + (Number(e.salary) || 0), 0);
+    const totalLoansActive = loans.filter(l => l.status === "active").reduce((s, l) => s + (Number(l.remaining) || 0), 0);
+    const totalPaidPayroll = payroll.filter(p => p.status === "paid").reduce((s, p) => s + (Number(p.net_salary) || 0), 0);
+
+    const barMax = Math.max(...lateByMonth.map(m => m.count), 1);
+
+    return (
+      <div className="fade-in">
+        {/* Summary KPIs */}
+        <div className="stats-grid" style={{ marginBottom: 24 }}>
+          {[
+            { icon: "📈", color: "green", value: Math.round(empAttRate.reduce((s, e) => s + e.rate, 0) / (empAttRate.length || 1)) + "%", label: T("Avg Attendance Rate", "متوسط نسبة الحضور") },
+            { icon: "⏰", color: "yellow", value: lateCount, label: T("Late This Month", "متأخرون هذا الشهر") },
+            { icon: "❌", color: "red", value: empAttRate.reduce((s, e) => s + e.absent, 0), label: T("Absent Days (30d)", "أيام غياب (30 يوم)") },
+            { icon: "⏱️", color: "blue", value: empAttRate.reduce((s, e) => s + Number(e.hours), 0).toFixed(0) + "h", label: T("Total Hours (30d)", "إجمالي الساعات") },
+            { icon: "💰", color: "purple", value: totalBase.toLocaleString() + " EGP", label: T("Monthly Payroll Cost", "تكلفة الرواتب الشهرية") },
+            { icon: "💳", color: "yellow", value: loans.filter(l => l.status === "active").length, label: T("Active Loans", "قروض نشطة") },
+          ].map((s, i) => (
+            <div className="stat-card" key={i}>
+              <div className={`stat-icon ${s.color}`}>{s.icon}</div>
+              <div className="stat-value" style={{ fontSize: 20 }}>{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+          {/* On-time vs Late Pie */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 16 }}>🕐 {T("This Month: Clock-In Status", "هذا الشهر: حالة تسجيل الحضور")}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {[
+                { label: T("On Time", "في الوقت"), count: onTime, color: "var(--ok)", pct: Math.round((onTime / totalThisMonth) * 100) },
+                { label: T("Late", "متأخر"), count: lateCount, color: "var(--warn)", pct: Math.round((lateCount / totalThisMonth) * 100) },
+                { label: T("Absent", "غائب"), count: absentCount, color: "var(--err)", pct: Math.round((absentCount / totalThisMonth) * 100) },
+              ].map((item, i) => (
+                <div key={i}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                    <span style={{ color: item.color, fontWeight: 600 }}>{item.label}</span>
+                    <span style={{ color: "var(--t2)" }}>{item.count} ({item.pct}%)</span>
+                  </div>
+                  <div style={{ height: 8, background: "var(--bg2)", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ width: `${item.pct}%`, height: "100%", background: item.color, borderRadius: 4, transition: "width 1s ease" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Department Headcount */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 16 }}>🏢 {T("Department Headcount", "توزيع الأقسام")}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {Object.entries(depts).sort((a, b) => b[1] - a[1]).map(([dept, count], i) => {
+                const colors = ["var(--acc)", "var(--ok)", "var(--warn)", "var(--info)", "var(--err)"];
+                const pct = Math.round((count / employees.length) * 100);
+                return (
+                  <div key={i}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: "var(--t1)", fontWeight: 500 }}>{dept}</span>
+                      <span style={{ color: "var(--t2)" }}>{count} {T("employees", "موظف")} ({pct}%)</span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--bg2)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: colors[i % colors.length], borderRadius: 3 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Late Arrivals Trend */}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-title" style={{ marginBottom: 20 }}>📉 {T("Late Arrivals Trend (Last 6 Months)", "اتجاه التأخير (آخر 6 أشهر)")}</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 140, padding: "0 8px" }}>
+            {lateByMonth.map((m, i) => (
+              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 12, color: "var(--t2)", fontWeight: 600 }}>{m.count}</div>
+                <div style={{ width: "100%", background: m.count > 0 ? "var(--warn)" : "var(--border)", borderRadius: "4px 4px 0 0", height: `${Math.max(4, (m.count / barMax) * 100)}px`, transition: "height 0.5s ease", minHeight: 4 }} />
+                <div style={{ fontSize: 11, color: "var(--t3)" }}>{m.month}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Employee Performance Table */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)" }}>
+            <div className="card-title">👤 {T("Employee Attendance Performance (Last 30 Days)", "أداء حضور الموظفين (آخر 30 يوم)")}</div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr>
+                <th>{T("Employee", "الموظف")}</th>
+                <th>{T("Department", "القسم")}</th>
+                <th>{T("Present Days", "أيام حضور")}</th>
+                <th>{T("Late Days", "أيام تأخير")}</th>
+                <th>{T("Absent Days", "أيام غياب")}</th>
+                <th>{T("Total Hours", "إجمالي الساعات")}</th>
+                <th>{T("Attendance Rate", "نسبة الحضور")}</th>
+              </tr></thead>
+              <tbody>
+                {empAttRate.map((emp, i) => (
+                  <tr key={i}>
+                    <td><div className="emp-row"><div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{emp.avatar || "?"}</div><span style={{ color: "var(--t1)", fontWeight: 500 }}>{emp.name}</span></div></td>
+                    <td>{emp.department || "—"}</td>
+                    <td style={{ color: "var(--ok)", fontWeight: 600 }}>{emp.present}</td>
+                    <td style={{ color: "var(--warn)", fontWeight: 600 }}>{emp.late}</td>
+                    <td style={{ color: emp.absent > 3 ? "var(--err)" : "var(--t2)", fontWeight: emp.absent > 3 ? 700 : 400 }}>{emp.absent}</td>
+                    <td>{emp.hours}h</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1, height: 6, background: "var(--bg2)", borderRadius: 3, overflow: "hidden", minWidth: 60 }}>
+                          <div style={{ width: `${emp.rate}%`, height: "100%", background: emp.rate >= 90 ? "var(--ok)" : emp.rate >= 70 ? "var(--warn)" : "var(--err)", borderRadius: 3 }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: emp.rate >= 90 ? "var(--ok)" : emp.rate >= 70 ? "var(--warn)" : "var(--err)", minWidth: 36 }}>{emp.rate}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Payroll & Loans Summary */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 16 }}>💰 {T("Payroll Breakdown", "تفصيل الرواتب")}</div>
+            {[
+              { label: T("Total Base Salaries", "إجمالي الرواتب الأساسية"), value: totalBase.toLocaleString() + " EGP", color: "var(--ok)" },
+              { label: T("Total Paid This Year", "إجمالي المدفوع هذا العام"), value: totalPaidPayroll.toLocaleString() + " EGP", color: "var(--acc)" },
+              { label: T("Pending Payroll", "رواتب معلقة"), value: payroll.filter(p => p.status === "pending").length + " " + T("payslips", "مسير راتب"), color: "var(--warn)" },
+            ].map((item, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < 2 ? "1px solid var(--border)" : "none" }}>
+                <span style={{ fontSize: 13, color: "var(--t2)" }}>{item.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: item.color }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 16 }}>💳 {T("Loan Repayment Status", "حالة سداد القروض")}</div>
+            {loans.filter(l => l.status === "active").length === 0
+              ? <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: 20 }}>{T("No active loans", "لا توجد قروض نشطة")}</div>
+              : loans.filter(l => l.status === "active").map((loan, i) => {
+                const emp = employees.find(e => e.id === loan.employee_id);
+                const pct = Math.min(100, Math.round(((loan.amount - loan.remaining) / loan.amount) * 100));
+                return (
+                  <div key={i} style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 500, color: "var(--t1)" }}>{emp?.name || "—"}</span>
+                      <span style={{ color: "var(--warn)" }}>{Number(loan.remaining).toLocaleString()} EGP {T("left", "متبقي")}</span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--bg2)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: "var(--ok)", borderRadius: 3 }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{pct}% {T("repaid", "تم سداده")}</div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const pages = { dashboard: renderDashboard, analytics: renderAnalytics, employees: renderEmployees, attendance: renderAttendance, payroll: renderPayroll, loans: renderLoans, selfservice: renderSelfService, settings: renderSettings };
 
   return (
     <>
@@ -1472,12 +1800,12 @@ export default function App() {
           </nav>
           <div className="sidebar-footer">
             <div className="sidebar-user">
-              <div className="sidebar-avatar">AK</div>
+              <div className="sidebar-avatar">{(currentEmployee?.avatar || (currentEmployee?.name || "AK").substring(0, 2)).toUpperCase()}</div>
               <div className="sidebar-user-info">
-                <div className="sidebar-user-name">Ahmed Kardous</div>
-                <div className="sidebar-user-role">Admin / HR</div>
+                <div className="sidebar-user-name">{currentEmployee?.name || "Ahmed Kardous"}</div>
+                <div className="sidebar-user-role" style={{ textTransform: "capitalize" }}>{role === "admin" ? "Admin" : role === "hr" ? "HR" : role === "accountant" ? "Accountant" : "Employee"}</div>
               </div>
-              <button onClick={() => setLoggedIn(false)} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 18 }}>🚪</button>
+              <button onClick={handleLogout} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 18, padding: 4 }} title={T("Logout", "تسجيل الخروج")}>🚪</button>
             </div>
           </div>
         </aside>
