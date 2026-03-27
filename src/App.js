@@ -404,10 +404,13 @@ function SignupPage({ lang, setLang, onBack }) {
       const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, data: { name, employee_code: code } }),
       });
       const data = await res.json();
-      if (data.error) { setError(data.error.message || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return; }
+      // Handle both confirmed and unconfirmed signup
+      if (data.error && !data.id) {
+        setError(data.error.message || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return;
+      }
       // Create employee record
       await db("employees", "POST", {
         employee_code: code,
@@ -708,6 +711,7 @@ export default function App() {
   const [clockOutPhotoOk, setClockOutPhotoOk] = useState(false);
   const [clockOutPhoto, setClockOutPhoto] = useState(null);
   const [clockOutDone, setClockOutDone] = useState(false);
+  const [clockOutVerifying, setClockOutVerifying] = useState(false);
 
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
@@ -1954,6 +1958,10 @@ export default function App() {
 
   const pendingBadge = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length + loans.filter(l => l.status === "pending").length;
 
+  // Safety: make sure page is valid for current role
+  const validPages = allNavItems ? allNavItems.filter(n => n.roles?.includes(role)).map(n => n.id) : [];
+  const safePage = validPages.includes(page) ? page : (validPages[0] || "attendance");
+
   // Role-based navigation
   const allNavItems = [
     { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
@@ -2368,14 +2376,14 @@ export default function App() {
           <header className="topbar">
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <button className="topbar-btn mobile-menu" style={{ display: "none" }} onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
-              <div className="topbar-title">{navItems.find(n => n.id === page)?.icon} {navItems.find(n => n.id === page)?.label}</div>
+              <div className="topbar-title">{navItems.find(n => n.id === safePage)?.icon} {navItems.find(n => n.id === safePage)?.label}</div>
             </div>
             <div className="topbar-actions">
               <button className="lang-toggle" onClick={() => setLang(ar ? "en" : "ar")}>{ar ? "English" : "العربية"}</button>
               <button className="topbar-btn notif-dot" title={T("Notifications", "الإشعارات")}>🔔</button>
             </div>
           </header>
-          <div className="content">{pages[page]?.()}</div>
+          <div className="content">{(pages[safePage] || pages["attendance"])?.()}</div>
         </div>
 
         {/* Photo Preview */}
