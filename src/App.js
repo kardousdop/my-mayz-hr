@@ -1186,51 +1186,119 @@ export default function App() {
         </Modal>
 
         {/* Edit Salary Modal */}
-        <Modal show={activeModal === "editSalary"} onClose={closeModal} title={T("Edit Salary & Bonuses", "تعديل الراتب والمكافآت")}>
+        <Modal show={activeModal === "editSalary"} onClose={closeModal} title={T("💰 Edit Salary & Bonuses", "💰 تعديل الراتب والمكافآت")} width={580}>
           <div className="info-box">
-            <strong>{modalData.name}</strong> — {modalData.employee_code}<br />
-            {T("Current Base Salary", "الراتب الأساسي الحالي")}: <strong style={{ color: "var(--ok)" }}>{Number(modalData.salary || 0).toLocaleString()} EGP</strong>
+            <strong>{modalData.name}</strong> — {modalData.employee_code} · {modalData.department}
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>{T("Base Salary (EGP)", "الراتب الأساسي")}</label><input type="number" value={modalData.base_salary || modalData.salary || 0} onChange={e => setModalData({ ...modalData, base_salary: +e.target.value })} /></div>
-            <div className="form-group"><label>{T("Allowances (EGP)", "البدلات")}</label><input type="number" value={modalData.allowances || 0} onChange={e => setModalData({ ...modalData, allowances: +e.target.value })} /></div>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>{T("Bonuses (EGP)", "المكافآت")}</label><input type="number" value={modalData.bonuses || 0} onChange={e => setModalData({ ...modalData, bonuses: +e.target.value })} /></div>
-            <div className="form-group"><label>{T("Deductions (EGP)", "الخصومات")}</label><input type="number" value={modalData.deductions || 0} onChange={e => setModalData({ ...modalData, deductions: +e.target.value })} /></div>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>{T("Tax (EGP)", "الضريبة")}</label><input type="number" value={modalData.tax || 0} onChange={e => setModalData({ ...modalData, tax: +e.target.value })} /></div>
-            <div className="form-group"><label>{T("Insurance (EGP)", "التأمين")}</label><input type="number" value={modalData.insurance || 0} onChange={e => setModalData({ ...modalData, insurance: +e.target.value })} /></div>
-          </div>
-          <div className="net-salary-box">
-            <div className="amount">{((modalData.base_salary || modalData.salary || 0) + (modalData.allowances || 0) + (modalData.bonuses || 0) - (modalData.deductions || 0) - (modalData.tax || 0) - (modalData.insurance || 0)).toLocaleString()} EGP</div>
-            <div className="label">{T("Net Salary", "صافي الراتب")}</div>
-          </div>
-          <div className="form-actions">
-            <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
-            <Btn color="primary" disabled={saving} onClick={async () => {
-              setSaving(true);
-              const base = modalData.base_salary || modalData.salary || 0;
-              const allowances = modalData.allowances || 0;
-              const bonuses = modalData.bonuses || 0;
-              const deductions = modalData.deductions || 0;
-              const tax = modalData.tax || 0;
-              const insurance = modalData.insurance || 0;
-              const net = base + allowances + bonuses - deductions - tax - insurance;
-              // Save all salary components to employees table
-              await db("employees", "PATCH", {
-                salary: base,
-                allowances,
-                bonuses,
-                deductions,
-                tax,
-                insurance,
-                net_salary: net,
-              }, `?id=eq.${modalData.id}`);
-              await loadAll(); setSaving(false); closeModal();
-            }}>{saving ? <span className="spinner" /> : T("Update Salary", "تحديث الراتب")}</Btn>
-          </div>
+
+          {/* Live salary breakdown */}
+          {(() => {
+            const base = Number(modalData.base_salary || modalData.salary || 0);
+            const allowances = Number(modalData.allowances || 0);
+            const bonuses = Number(modalData.bonuses || 0);
+            const deductions = Number(modalData.deductions || 0);
+            const tax = Number(modalData.tax || 0);
+            const insurance = Number(modalData.insurance || 0);
+            const gross = base + allowances + bonuses;
+            const totalDed = deductions + tax + insurance;
+            const net = gross - totalDed;
+            return (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  {/* Additions */}
+                  <div style={{ background: "var(--okb)", border: "1px solid var(--ok)", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: 12, color: "var(--ok)", fontWeight: 700, marginBottom: 8 }}>➕ {T("ADDITIONS", "الإضافات")}</div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12 }}>{T("Base Salary", "الراتب الأساسي")}</label>
+                      <input type="number" value={base || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, base_salary: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12 }}>{T("Allowances", "البدلات")}</label>
+                      <input type="number" value={allowances || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, allowances: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>{T("Bonuses", "المكافآت")}</label>
+                      <input type="number" value={bonuses || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, bonuses: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--ok)", fontSize: 13, fontWeight: 700, color: "var(--ok)" }}>
+                      = {gross.toLocaleString()} EGP
+                    </div>
+                  </div>
+
+                  {/* Deductions */}
+                  <div style={{ background: "var(--errb)", border: "1px solid var(--err)", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: 12, color: "var(--err)", fontWeight: 700, marginBottom: 8 }}>➖ {T("DEDUCTIONS", "الخصومات")}</div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12 }}>{T("Deductions", "خصومات أخرى")}</label>
+                      <input type="number" value={deductions || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, deductions: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12 }}>{T("Tax", "الضريبة")}</label>
+                      <input type="number" value={tax || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, tax: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>{T("Insurance", "التأمين")}</label>
+                      <input type="number" value={insurance || ""} placeholder="0"
+                        onChange={e => setModalData({ ...modalData, insurance: +e.target.value })}
+                        style={{ padding: "8px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, width: "100%", outline: "none" }} />
+                    </div>
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--err)", fontSize: 13, fontWeight: 700, color: "var(--err)" }}>
+                      = -{totalDed.toLocaleString()} EGP
+                    </div>
+                  </div>
+                </div>
+
+                {/* Net Salary */}
+                <div className="net-salary-box">
+                  <div style={{ fontSize: 12, color: "var(--t2)", marginBottom: 4 }}>{gross.toLocaleString()} − {totalDed.toLocaleString()} =</div>
+                  <div className="amount" style={{ fontSize: 36 }}>{net.toLocaleString()} EGP</div>
+                  <div className="label">🎯 {T("Net Monthly Salary", "صافي الراتب الشهري")}</div>
+                </div>
+
+                <div className="form-actions">
+                  <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+                  <Btn color="primary" disabled={saving} onClick={async () => {
+                    setSaving(true);
+                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                    const curMonth = months[new Date().getMonth()];
+                    const curYear = new Date().getFullYear();
+
+                    // 1. Save salary breakdown to employee record
+                    await db("employees", "PATCH", {
+                      salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net,
+                    }, `?id=eq.${modalData.id}`);
+
+                    // 2. Auto-create or update payroll record for current month
+                    const existingPayroll = payroll.find(p =>
+                      p.employee_id === modalData.id && p.month === curMonth && p.year === curYear
+                    );
+                    if (existingPayroll) {
+                      await db("payroll", "PATCH", {
+                        base_salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net, status: "pending",
+                      }, `?id=eq.${existingPayroll.id}`);
+                    } else {
+                      await db("payroll", "POST", {
+                        employee_id: modalData.id, month: curMonth, year: curYear,
+                        base_salary: base, allowances, bonuses, deductions, tax, insurance,
+                        loan_deduction: 0, net_salary: net, status: "pending",
+                      });
+                    }
+                    await loadAll(); setSaving(false); closeModal();
+                  }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
+                </div>
+              </>
+            );
+          })()}
         </Modal>
       </div>
     );
@@ -1519,7 +1587,187 @@ export default function App() {
   // ============================================================
   const renderPayroll = () => {
     const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    const calcNet = d => (d.base_salary || 0) + (d.allowances || 0) + (d.bonuses || 0) - (d.deductions || 0) - (d.tax || 0) - (d.insurance || 0) - (d.loan_deduction || 0);
+    const calcNet = d => (Number(d.base_salary)||0) + (Number(d.allowances)||0) + (Number(d.bonuses)||0) - (Number(d.deductions)||0) - (Number(d.tax)||0) - (Number(d.insurance)||0) - (Number(d.loan_deduction)||0);
+
+    // For employee role — show only their own payslips
+    const myPayroll = role === "employee"
+      ? payroll.filter(p => p.employee_id === currentEmployee?.id)
+      : payroll;
+
+    // Summary stats
+    const thisMonth = months[now.getMonth()];
+    const thisYear = now.getFullYear();
+    const thisMonthPayroll = myPayroll.filter(p => p.month === thisMonth && p.year === thisYear);
+    const totalNet = thisMonthPayroll.reduce((s, p) => s + (Number(p.net_salary) || calcNet(p)), 0);
+    const paidCount = thisMonthPayroll.filter(p => p.status === "paid").length;
+    const pendingCount = thisMonthPayroll.filter(p => p.status === "pending").length;
+
+    return (
+      <div className="fade-in">
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
+            <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
+          </div>
+          {(role === "admin" || role === "hr") && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn color="primary" onClick={async () => {
+                // Auto-generate payslips for all active employees this month
+                const activeEmps = employees.filter(e => e.status === "active");
+                let created = 0;
+                for (const emp of activeEmps) {
+                  const exists = payroll.find(p => p.employee_id === emp.id && p.month === thisMonth && p.year === thisYear);
+                  if (!exists && emp.salary > 0) {
+                    const activeLoan = loans.find(l => l.employee_id === emp.id && l.status === "active");
+                    const net = (emp.salary||0) + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - (activeLoan?.monthly_deduction||0);
+                    await db("payroll","POST",{
+                      employee_id: emp.id, month: thisMonth, year: thisYear,
+                      base_salary: emp.salary||0, allowances: emp.allowances||0, bonuses: emp.bonuses||0,
+                      deductions: emp.deductions||0, tax: emp.tax||0, insurance: emp.insurance||0,
+                      loan_deduction: activeLoan?.monthly_deduction||0, net_salary: net, status: "pending",
+                    }); created++;
+                  }
+                }
+                await loadAll();
+                if (created > 0) alert(T(`✅ Generated ${created} payslips for ${thisMonth} ${thisYear}`, `✅ تم إنشاء ${created} مسير رواتب لـ ${thisMonth} ${thisYear}`));
+                else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
+              }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
+              <Btn color="outline" onClick={() => openModal("createPayroll", { month: thisMonth, year: thisYear, employee_id: employees[0]?.id, base_salary: 0, allowances: 0, bonuses: 0, deductions: 0, tax: 0, insurance: 0, loan_deduction: 0 })}>➕ {T("Manual Payslip", "مسير يدوي")}</Btn>
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        {role !== "employee" && (
+          <div className="stats-grid" style={{ marginBottom: 20 }}>
+            {[
+              { icon: "💰", color: "green", value: totalNet.toLocaleString() + " EGP", label: T("Total Payroll This Month", "إجمالي الرواتب هذا الشهر") },
+              { icon: "✅", color: "green", value: paidCount, label: T("Paid", "مدفوع") },
+              { icon: "⏳", color: "yellow", value: pendingCount, label: T("Pending Payment", "في انتظار الدفع") },
+              { icon: "👥", color: "blue", value: employees.filter(e => e.status === "active").length, label: T("Active Employees", "موظفون نشطون") },
+            ].map((s, i) => (
+              <div className="stat-card" key={i}>
+                <div className={`stat-icon ${s.color}`}>{s.icon}</div>
+                <div className="stat-value" style={{ fontSize: 20 }}>{s.value}</div>
+                <div className="stat-label">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Payroll Table */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr>
+                {role !== "employee" && <th>{T("Employee", "الموظف")}</th>}
+                <th>{T("Period", "الفترة")}</th>
+                <th>{T("Base", "أساسي")}</th>
+                <th style={{ color: "var(--ok)" }}>+ {T("Allowances", "بدلات")}</th>
+                <th style={{ color: "var(--ok)" }}>+ {T("Bonuses", "مكافآت")}</th>
+                <th style={{ color: "var(--err)" }}>- {T("Deductions", "خصومات")}</th>
+                <th style={{ color: "var(--err)" }}>- {T("Tax", "ضريبة")}</th>
+                <th style={{ color: "var(--err)" }}>- {T("Insurance", "تأمين")}</th>
+                {role !== "employee" && <th style={{ color: "var(--err)" }}>- {T("Loan", "قرض")}</th>}
+                <th style={{ color: "var(--ok)", fontWeight: 700 }}>= {T("Net", "الصافي")}</th>
+                <th>{T("Status", "الحالة")}</th>
+                {(role === "admin" || role === "accountant") && <th>{T("Actions", "إجراءات")}</th>}
+              </tr></thead>
+              <tbody>
+                {myPayroll.length === 0
+                  ? <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--t3)", padding: 40 }}>
+                      <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+                      <div>{T("No payslips yet.", "لا توجد مسيرات رواتب بعد.")}</div>
+                      {(role === "admin" || role === "hr") && <div style={{ fontSize: 13, marginTop: 8, color: "var(--t3)" }}>{T("Click 'Auto-Generate' to create payslips for all employees.", "اضغط 'إنشاء تلقائي' لإنشاء مسيرات لجميع الموظفين.")}</div>}
+                    </td></tr>
+                  : myPayroll.map((p, i) => {
+                    const emp = employees.find(e => e.id === p.employee_id);
+                    const net = Number(p.net_salary) || calcNet(p);
+                    return (
+                      <tr key={i} style={{ background: p.status === "paid" ? "rgba(16,185,129,0.03)" : "" }}>
+                        {role !== "employee" && (
+                          <td>
+                            <div className="emp-row">
+                              <div className="emp-avatar" style={{ width: 30, height: 30, fontSize: 11 }}>{emp?.avatar || "?"}</div>
+                              <div>
+                                <div style={{ color: "var(--t1)", fontWeight: 500 }}>{emp?.name || "—"}</div>
+                                <div style={{ fontSize: 11, color: "var(--t3)" }}>{emp?.employee_code}</div>
+                              </div>
+                            </div>
+                          </td>
+                        )}
+                        <td style={{ fontWeight: 600, color: "var(--t1)", whiteSpace: "nowrap" }}>{p.month} {p.year}</td>
+                        <td>{Number(p.base_salary||0).toLocaleString()}</td>
+                        <td style={{ color: "var(--ok)" }}>+{Number(p.allowances||0).toLocaleString()}</td>
+                        <td style={{ color: "var(--ok)" }}>+{Number(p.bonuses||0).toLocaleString()}</td>
+                        <td style={{ color: "var(--err)" }}>-{Number(p.deductions||0).toLocaleString()}</td>
+                        <td style={{ color: "var(--err)" }}>-{Number(p.tax||0).toLocaleString()}</td>
+                        <td style={{ color: "var(--err)" }}>-{Number(p.insurance||0).toLocaleString()}</td>
+                        {role !== "employee" && <td style={{ color: "var(--err)" }}>-{Number(p.loan_deduction||0).toLocaleString()}</td>}
+                        <td style={{ color: "var(--ok)", fontWeight: 700, fontSize: 15 }}>{net.toLocaleString()} EGP</td>
+                        <td><span className={`badge ${p.status === "paid" ? "green" : "yellow"}`}>{p.status === "paid" ? "✅ " + T("Paid","مدفوع") : "⏳ " + T("Pending","معلق")}</span></td>
+                        {(role === "admin" || role === "accountant") && (
+                          <td>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>}
+                              {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>}
+                              {role === "admin" && <Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this payslip?","حذف مسير الراتب؟"))){ await db("payroll","DELETE",null,`?id=eq.${p.id}`); loadAll(); } }}>🗑️</Btn>}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Manual create/edit payslip modals */}
+        {["createPayroll","editPayroll"].map(mtype => (
+          <Modal key={mtype} show={activeModal === mtype} onClose={closeModal} title={mtype === "createPayroll" ? T("➕ Create Payslip","➕ إنشاء مسير راتب") : T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
+            {mtype === "createPayroll" && (
+              <div className="form-group">
+                <label>{T("Employee","الموظف")}</label>
+                <select value={modalData.employee_id||""} onChange={e => { const emp=employees.find(x=>x.id===+e.target.value); setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0}); }}>
+                  <option value="">{T("Select employee...","اختر الموظف...")}</option>
+                  {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
+                </select>
+              </div>
+            )}
+            <div className="form-row">
+              <div className="form-group"><label>{T("Month","الشهر")}</label>
+                <select value={modalData.month||thisMonth} onChange={e=>setModalData({...modalData,month:e.target.value})}>
+                  {months.map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="form-group"><label>{T("Year","السنة")}</label><input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} /></div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+              {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
+                <div key={k}><label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label><input type="number" value={modalData[k]||0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})} style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} /></div>
+              ))}
+            </div>
+            <div className="net-salary-box">
+              <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
+              <div className="label">{T("Net Salary","صافي الراتب")}</div>
+            </div>
+            <div className="form-actions">
+              <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
+              <Btn color="primary" disabled={saving} onClick={async()=>{
+                setSaving(true);
+                const net=calcNet(modalData);
+                if(mtype==="createPayroll") await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
+                else await db("payroll","PATCH",{...modalData,net_salary:net},`?id=eq.${modalData.id}`);
+                await loadAll(); setSaving(false); closeModal();
+              }}>{saving?<span className="spinner"/>:T("Save","حفظ")}</Btn>
+            </div>
+          </Modal>
+        ))}
+      </div>
+    );
+  };
 
     return (
       <div className="fade-in">
@@ -1572,52 +1820,6 @@ export default function App() {
             </table>
           </div>
         </div>
-
-        {["createPayroll", "editPayroll"].map(mtype => (
-          <Modal key={mtype} show={activeModal === mtype} onClose={closeModal} title={mtype === "createPayroll" ? T("Create Payslip", "إنشاء راتب") : T("Edit Payslip", "تعديل الراتب")}>
-            {mtype === "createPayroll" && (
-              <div className="form-group">
-                <label>{T("Employee", "الموظف")}</label>
-                <select value={modalData.employee_id || ""} onChange={e => { const emp = employees.find(x => x.id === +e.target.value); setModalData({ ...modalData, employee_id: +e.target.value, base_salary: emp?.salary || 0 }); }}>
-                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="form-row">
-              <div className="form-group"><label>{T("Month", "الشهر")}</label>
-                <select value={modalData.month || ""} onChange={e => setModalData({ ...modalData, month: e.target.value })}>
-                  {months.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div className="form-group"><label>{T("Year", "السنة")}</label><input type="number" value={modalData.year || now.getFullYear()} onChange={e => setModalData({ ...modalData, year: +e.target.value })} /></div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-              {[["base_salary", T("Base Salary", "الراتب الأساسي")], ["allowances", T("Allowances", "البدلات")], ["bonuses", T("Bonuses", "المكافآت")]].map(([k, lbl]) => (
-                <div key={k} className="pfield"><label>{lbl}</label><input type="number" value={modalData[k] || 0} onChange={e => setModalData({ ...modalData, [k]: +e.target.value })} /></div>
-              ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-              {[["deductions", T("Deductions", "الخصومات")], ["tax", T("Tax", "الضريبة")], ["insurance", T("Insurance", "التأمين")], ["loan_deduction", T("Loan Ded.", "خصم قرض")]].map(([k, lbl]) => (
-                <div key={k} className="pfield"><label>{lbl}</label><input type="number" value={modalData[k] || 0} onChange={e => setModalData({ ...modalData, [k]: +e.target.value })} /></div>
-              ))}
-            </div>
-            <div className="net-salary-box">
-              <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
-              <div className="label">{T("Net Salary", "صافي الراتب")}</div>
-            </div>
-            <div className="form-group" style={{ marginTop: 16 }}><label>{T("Notes", "ملاحظات")}</label><textarea rows={2} value={modalData.notes || ""} onChange={e => setModalData({ ...modalData, notes: e.target.value })} /></div>
-            <div className="form-actions">
-              <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
-              <Btn color="primary" disabled={saving} onClick={async () => {
-                setSaving(true);
-                const net = calcNet(modalData);
-                if (mtype === "createPayroll") await db("payroll", "POST", { ...modalData, net_salary: net });
-                else await db("payroll", "PATCH", { ...modalData, net_salary: net }, `?id=eq.${modalData.id}`);
-                await loadAll(); setSaving(false); closeModal();
-              }}>{saving ? <span className="spinner" /> : T("Save", "حفظ")}</Btn>
-            </div>
-          </Modal>
-        ))}
       </div>
     );
   };
@@ -2025,7 +2227,7 @@ export default function App() {
     { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"] },
     { id: "shifts", icon: "🕐", label: T("Shifts", "المناوبات"), roles: ["admin","hr"] },
     { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور"), roles: ["admin","hr","accountant","employee"] },
-    { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant"] },
+    { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant","employee"] },
     { id: "loans", icon: "💳", label: T("Loans", "القروض"), roles: ["admin","hr","accountant"] },
     { id: "selfservice", icon: "🙋", label: T("Self-Service", "الخدمة الذاتية"), roles: ["admin","hr","employee"], badge: pendingBadge || null },
     { id: "settings", icon: "⚙️", label: T("Settings", "الإعدادات"), roles: ["admin"] },
