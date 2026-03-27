@@ -715,6 +715,30 @@ export default function App() {
     if (sh && sh.length > 0) setShifts(sh);
     if (esh) setEmpShifts(esh);
 
+    // ✅ RESTORE CLOCK-IN STATE FROM DATABASE
+    // Check if current employee has clocked in today but not yet clocked out
+    if (emps && att) {
+      const empId = currentEmployee?.id || emps[0]?.id;
+      const today = new Date().toISOString().split("T")[0];
+      const todayRecord = att.find(a =>
+        a.employee_id === empId &&
+        a.date === today &&
+        a.check_in &&
+        !a.check_out
+      );
+      if (todayRecord) {
+        setClockedIn(true);
+        setClockInTime(new Date(todayRecord.check_in));
+        setLocLabel(todayRecord.location_label || null);
+        setGpsOk(true);
+        setPhotoOk(true);
+      } else {
+        setClockedIn(false);
+        setClockInTime(null);
+        setLocLabel(null);
+      }
+    }
+
     // Auto-generate payroll for current month if admin/hr and missing
     if ((role === "admin" || role === "hr") && emps && pay !== null) {
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -872,13 +896,18 @@ export default function App() {
     let outPhoto = null;
     try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
 
-    // Save
+    // Save clock out - always fetch fresh from DB to find today's open record
     const clockTime = new Date();
     const today = clockTime.toISOString().split("T")[0];
     const empId = currentEmployee?.id || employees[0]?.id;
-    const rec = attendance.find(a => a.date === today && a.employee_id === empId && !a.check_out);
+
+    // Fetch fresh attendance to find today's open record
+    const freshAtt = await db("attendance", "GET", null, `?employee_id=eq.${empId}&date=eq.${today}&check_out=is.null&select=*`);
+    const rec = freshAtt?.[0];
+
     if (rec) {
-      const hours = Math.round(((clockTime - new Date(rec.check_in)) / 3600000) * 100) / 100;
+      const checkinTime = new Date(rec.check_in);
+      const hours = Math.round(((clockTime - checkinTime) / 3600000) * 100) / 100;
       const incomplete = hours < MIN_SHIFT_HOURS;
       await db("attendance", "PATCH", {
         check_out: clockTime.toISOString(),
@@ -1363,8 +1392,14 @@ export default function App() {
                       {verifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Clock In", "تسجيل الدخول")}
                     </button>
                   : <div style={{ color: "var(--ok)", fontWeight: 600, fontSize: 15 }}>
-                      ✅ {T("Clocked in at", "تم الدخول في")} {clockInTime?.toLocaleTimeString()}
-                      {locLabel && <div style={{ fontSize: 13, color: "var(--t2)", marginTop: 6 }}>📍 {locLabel}</div>}
+                      ✅ {T("Clocked in at", "تم الدخول في")} {clockInTime?.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                      {locLabel && <div style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>📍 {locLabel}</div>}
+                      <div style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>
+                        ⏱️ {T("Working for", "مدة العمل")}: {Math.floor((now - clockInTime) / 3600000)}h {Math.floor(((now - clockInTime) % 3600000) / 60000)}m
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 4, background: "var(--okb)", padding: "4px 10px", borderRadius: 6 }}>
+                        🔒 {T("Session saved — you can logout and come back", "الجلسة محفوظة — يمكنك الخروج والعودة")}
+                      </div>
                     </div>
                 }
 
