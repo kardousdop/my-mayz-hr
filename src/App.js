@@ -1082,7 +1082,20 @@ export default function App() {
                       </td>
                       <td>{emp.department || "—"}</td>
                       <td>{emp.position || "—"}</td>
-                      <td style={{ color: "var(--ok)", fontWeight: 600 }}>{Number(emp.salary || 0).toLocaleString()} EGP</td>
+                      <td>
+                        <div style={{ lineHeight: 1.4 }}>
+                          <div style={{ color: "var(--ok)", fontWeight: 700, fontSize: 15 }}>
+                            {Number((emp.net_salary || emp.salary) || 0).toLocaleString()} EGP
+                          </div>
+                          {(emp.allowances > 0 || emp.bonuses > 0 || emp.deductions > 0 || emp.tax > 0 || emp.insurance > 0) && (
+                            <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>
+                              Base: {Number(emp.salary||0).toLocaleString()}
+                              {emp.allowances > 0 && <span style={{ color: "var(--ok)" }}> +{Number(emp.allowances).toLocaleString()}</span>}
+                              {(emp.deductions > 0 || emp.tax > 0 || emp.insurance > 0) && <span style={{ color: "var(--err)" }}> -{Number((emp.deductions||0)+(emp.tax||0)+(emp.insurance||0)).toLocaleString()}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td><span className={`badge ${emp.role === "admin" ? "purple" : emp.role === "hr" ? "green" : emp.role === "accountant" ? "yellow" : "blue"}`}>{emp.role || "employee"}</span></td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
                       <td>
@@ -1291,7 +1304,8 @@ export default function App() {
               const curYear = new Date().getFullYear();
 
               // Save to employee record
-              await db("employees", "PATCH", { salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${modalData.id}`);
+              const empResult = await db("employees", "PATCH", { salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${modalData.id}`);
+              console.log("Salary save result:", empResult);
 
               // Auto-create or update payroll for this month
               const existing = payroll.find(p => p.employee_id === modalData.id && p.month === curMonth && p.year === curYear);
@@ -1301,6 +1315,7 @@ export default function App() {
                 await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: 0, net_salary: net, status: "pending" });
               }
               await loadAll(); setSaving(false); closeModal();
+              alert(T(`✅ Salary saved! Net: ${net.toLocaleString()} EGP. Payroll record created for ${curMonth} ${curYear}.`, `✅ تم حفظ الراتب! الصافي: ${net.toLocaleString()} جنيه. تم إنشاء مسير ${curMonth} ${curYear}.`));
             }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
           </div>
         </Modal>
