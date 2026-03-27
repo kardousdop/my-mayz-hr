@@ -67,7 +67,7 @@ function waitForFaceIO() {
           try {
             if (!faceioInstance) faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
             resolve(faceioInstance);
-          } catch(e) { reject(e); }
+          } catch(e) { faceioInstance = null; reject(e); }
         } else if (--tries <= 0) {
           clearInterval(check);
           reject(new Error("FaceIO failed to initialize. Please refresh and try again."));
