@@ -567,20 +567,37 @@ function LoginPage({ lang, setLang, role, onLogin, onBack }) {
       });
       const data = await res.json();
       if (data.access_token) {
-        // Get employee record by email to confirm role
+        // Get employee record by email
         const emps = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=*`);
         const emp = emps?.[0];
-        const empRole = emp?.role || role;
-        // Verify role matches portal
+        if (!emp) {
+          setError(T("Account not found in employee records. Contact admin.", "الحساب غير موجود في سجلات الموظفين. تواصل مع المشرف."));
+          setLoading(false); return;
+        }
+        if (emp.status === "pending") {
+          setError(T("Your account is pending admin approval. Please wait.", "حسابك في انتظار موافقة المشرف. يرجى الانتظار."));
+          setLoading(false); return;
+        }
+        if (emp.status === "inactive") {
+          setError(T("Your account has been deactivated. Contact admin.", "تم تعطيل حسابك. تواصل مع المشرف."));
+          setLoading(false); return;
+        }
+        const empRole = emp?.role || "employee";
+        // Verify role matches portal (admin can access any portal)
         if (role !== "admin" && empRole !== role && empRole !== "admin") {
-          setError(T(`This account does not have ${role} access.`, `هذا الحساب لا يملك صلاحية ${role}.`));
+          setError(T(`This account does not have ${role} access. Please use the correct portal.`, `هذا الحساب ليس له صلاحية ${role}. استخدم البوابة الصحيحة.`));
           setLoading(false); return;
         }
         onLogin(empRole, data.user, emp); return;
       }
-    } catch (e) {}
+      // Handle specific Supabase errors
+      if (data.error_description?.includes("Email not confirmed")) {
+        setError(T("Please confirm your email first, or contact admin to activate your account.", "يرجى تأكيد بريدك الإلكتروني، أو تواصل مع المشرف لتفعيل حسابك."));
+        setLoading(false); return;
+      }
+    } catch (e) { console.warn("Auth error:", e); }
 
-    // Fallback credentials
+    // Fallback demo credentials
     const creds = {
       admin: [{ email: "hello@mymayz.com", password: "Ghalia@0902" }, { email: "admin@peopleflow.com", password: "demo123" }],
       hr: [{ email: "hr@mymayz.com", password: "hr123456" }],
@@ -589,11 +606,10 @@ function LoginPage({ lang, setLang, role, onLogin, onBack }) {
     };
     const match = (creds[role] || []).find(c => c.email === email && c.password === password);
     if (match) {
-      // Find employee by email
       const emps = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=*`);
       onLogin(role, { email, id: "demo" }, emps?.[0] || null);
     } else {
-      setError(T("Login failed. Check your credentials.", "فشل تسجيل الدخول. تحقق من بياناتك."));
+      setError(T("Login failed. Check your email and password.", "فشل تسجيل الدخول. تحقق من بياناتك."));
     }
     setLoading(false);
   };
@@ -1078,9 +1094,21 @@ export default function App() {
                       <td><span className={`badge ${emp.role === "admin" ? "purple" : emp.role === "hr" ? "green" : emp.role === "accountant" ? "yellow" : "blue"}`}>{emp.role || "employee"}</span></td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
                       <td>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <Btn size="sm" color="outline" onClick={() => openModal("editEmployee", { ...emp })}>✏️ {T("Edit", "تعديل")}</Btn>
-                          <Btn size="sm" color="success" onClick={() => openModal("editSalary", { ...emp, base_salary: emp.salary, allowances: 0, bonuses: 0, deductions: 0, tax: 0, insurance: 0 })}>💰 {T("Salary", "الراتب")}</Btn>
+                          <Btn size="sm" color="success" onClick={() => openModal("editSalary", { ...emp, base_salary: emp.salary, allowances: emp.allowances || 0, bonuses: emp.bonuses || 0, deductions: emp.deductions || 0, tax: emp.tax || 0, insurance: emp.insurance || 0 })}>💰 {T("Salary", "الراتب")}</Btn>
+                          <Btn size="sm" color="danger" onClick={async () => {
+                            if (window.confirm(T(`Delete ${emp.name}? This cannot be undone.`, `حذف ${emp.name}؟ لا يمكن التراجع.`))) {
+                              await db("attendance", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("loans", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("excuse_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("leave_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("payroll", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("employee_shifts", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                              await db("employees", "DELETE", null, `?id=eq.${emp.id}`);
+                              await loadAll();
+                            }
+                          }}>🗑️</Btn>
                         </div>
                       </td>
                     </tr>
@@ -1177,8 +1205,23 @@ export default function App() {
             <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
             <Btn color="primary" disabled={saving} onClick={async () => {
               setSaving(true);
-              const net = (modalData.base_salary || modalData.salary || 0) + (modalData.allowances || 0) + (modalData.bonuses || 0) - (modalData.deductions || 0) - (modalData.tax || 0) - (modalData.insurance || 0);
-              await db("employees", "PATCH", { salary: modalData.base_salary || modalData.salary }, `?id=eq.${modalData.id}`);
+              const base = modalData.base_salary || modalData.salary || 0;
+              const allowances = modalData.allowances || 0;
+              const bonuses = modalData.bonuses || 0;
+              const deductions = modalData.deductions || 0;
+              const tax = modalData.tax || 0;
+              const insurance = modalData.insurance || 0;
+              const net = base + allowances + bonuses - deductions - tax - insurance;
+              // Save all salary components to employees table
+              await db("employees", "PATCH", {
+                salary: base,
+                allowances,
+                bonuses,
+                deductions,
+                tax,
+                insurance,
+                net_salary: net,
+              }, `?id=eq.${modalData.id}`);
               await loadAll(); setSaving(false); closeModal();
             }}>{saving ? <span className="spinner" /> : T("Update Salary", "تحديث الراتب")}</Btn>
           </div>
