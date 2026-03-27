@@ -105,52 +105,23 @@ function getShiftStatus(shift, clockInTime) {
   return "very_late";
 }
 
-// Approved locations
-const LOCATIONS = {
-  office: {
-    name: "Office",
-    nameAr: "المكتب",
-    lat: 29.9921, lng: 31.0316,
-    radius: 0.3,
-    allowedTypes: ["office", "hr", "admin", "accountant"],
-    strictGPS: false, // office employees CAN work from home on Saturday
-  },
-  warehouse: {
-    name: "Warehouse",
-    nameAr: "المستودع",
-    lat: 30.0100, lng: 31.1800, // ← UPDATE with real coords when confirmed
-    radius: 0.2,
-    allowedTypes: ["warehouse"],
-    strictGPS: true, // MUST be on-site
-  },
-  mall: {
-    name: "Mall of Egypt",
-    nameAr: "مول مصر",
-    lat: 29.9724, lng: 31.0164,
-    radius: 0.2,
-    allowedTypes: ["retail"],
-    strictGPS: true, // MUST be at mall
-  },
-};
+// ============================================================
+// APPROVED GPS LOCATIONS — update coords when confirmed
+// ============================================================
+const APPROVED_LOCATIONS = [
+  { id: "office",    name: "Office",        nameAr: "المكتب",   lat: 29.9921,  lng: 31.0316,  radius: 0.3, icon: "🏢" },
+  { id: "warehouse", name: "Warehouse",     nameAr: "المستودع", lat: 29.9527,  lng: 30.9219,  radius: 0.3, icon: "🏭" }, // ← replace with exact coords
+  { id: "mall",      name: "Mall of Egypt", nameAr: "مول مصر", lat: 29.97243, lng: 31.01641,  radius: 0.25, icon: "🛍️" },
+];
 
-// Check which approved location the employee is at
-function getApprovedLocation(lat, lng) {
-  for (const [key, loc] of Object.entries(LOCATIONS)) {
-    const dist = distKm(lat, lng, loc.lat, loc.lng);
-    if (dist <= loc.radius) return { key, ...loc, dist };
+function getMatchedLocation(lat, lng, approvedIds) {
+  const toCheck = approvedIds?.length > 0
+    ? APPROVED_LOCATIONS.filter(l => approvedIds.includes(l.id))
+    : APPROVED_LOCATIONS;
+  for (const loc of toCheck) {
+    if (distKm(lat, lng, loc.lat, loc.lng) <= loc.radius) return loc;
   }
   return null;
-}
-
-// Check if today is a working day for employee type
-function isWorkingDay(empType) {
-  const day = new Date().getDay(); // 0=Sun, 5=Fri, 6=Sat
-  if (day === 5) return false; // Friday = off for all
-  if (day === 6) {
-    // Saturday: warehouse works, office works from home, retail works at mall
-    return true;
-  }
-  return true;
 }
 
 // Distance calculation
@@ -792,43 +763,30 @@ export default function App() {
       return;
     }
 
-    // Step 3: Smart location check
-    const approvedLoc = getApprovedLocation(loc.lat, loc.lng);
+    // Step 3: Check employee's assigned locations
     const clockTime = new Date();
     const day = clockTime.getDay();
-    const isSaturday = day === 6;
     const isFriday = day === 5;
-    const empType = currentEmployee?.employee_type || "office";
 
-    // Friday check — no one works
     if (isFriday) {
       setGpsErr(T("Today is Friday — it's a day off! 🎉", "اليوم جمعة — يوم إجازة! 🎉"));
       setVerifying(null); return;
     }
 
-    // Warehouse employees — MUST be at warehouse
-    if (empType === "warehouse" && (!approvedLoc || approvedLoc.key !== "warehouse")) {
-      setGpsErr(T("Warehouse employees must clock in from the warehouse location only.", "موظفو المستودع يجب أن يسجلوا الحضور من موقع المستودع فقط."));
-      setVerifying(null); return;
-    }
+    // Get employee's approved location IDs
+    const empApprovedLocs = currentEmployee?.approved_locations
+      ? (typeof currentEmployee.approved_locations === "string"
+          ? JSON.parse(currentEmployee.approved_locations)
+          : currentEmployee.approved_locations)
+      : ["office"]; // default to office
 
-    // Retail employees — MUST be at mall
-    if (empType === "retail" && (!approvedLoc || approvedLoc.key !== "mall")) {
-      setGpsErr(T("Retail employees must clock in from Mall of Egypt only.", "موظفو المتجر يجب أن يسجلوا الحضور من مول مصر فقط."));
-      setVerifying(null); return;
-    }
+    const matchedLoc = getMatchedLocation(loc.lat, loc.lng, empApprovedLocs);
 
-    // Office employees on Saturday → must select Home
-    if (empType === "office" && isSaturday && !approvedLoc) {
-      setPendingLoc(loc); setPendingTime(clockTime);
-      setShowLocModal(true); setVerifying(null); return;
-    }
-
-    if (approvedLoc) {
-      // At an approved location
-      await doSaveClockIn(clockTime, loc, approvedLoc.name, photoData);
+    if (matchedLoc) {
+      // At an approved location ✅
+      await doSaveClockIn(clockTime, loc, matchedLoc.name, photoData);
     } else {
-      // Outside all approved locations → ask for reason
+      // Outside approved locations → must explain
       setPendingLoc(loc); setPendingTime(clockTime);
       setShowLocModal(true); setVerifying(null);
     }
@@ -1174,11 +1132,54 @@ export default function App() {
               </select>
             </div>
           </div>
+          {/* Approved GPS Locations */}
+          <div className="form-group">
+            <label>📍 {T("Approved Work Locations (GPS)", "مواقع العمل المعتمدة (GPS)")}</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+              {APPROVED_LOCATIONS.map(loc => {
+                const current = (() => {
+                  try {
+                    const v = modalData.approved_locations;
+                    return Array.isArray(v) ? v : (typeof v === "string" ? JSON.parse(v || "[]") : []);
+                  } catch { return ["office"]; }
+                })();
+                const checked = current.includes(loc.id);
+                return (
+                  <label key={loc.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: checked ? "var(--accg)" : "var(--bg2)", border: `1px solid ${checked ? "var(--acc)" : "var(--border)"}`, borderRadius: 8, cursor: "pointer", fontWeight: checked ? 600 : 400, transition: "all 0.15s" }}>
+                    <input type="checkbox" checked={checked} onChange={() => {
+                      const next = checked ? current.filter(x => x !== loc.id) : [...current, loc.id];
+                      setModalData({ ...modalData, approved_locations: next });
+                    }} style={{ width: 16, height: 16 }} />
+                    <span style={{ fontSize: 18 }}>{loc.icon}</span>
+                    <div>
+                      <div style={{ color: "var(--t1)", fontSize: 14 }}>{loc.name}</div>
+                      <div style={{ color: "var(--t3)", fontSize: 12 }}>{loc.nameAr} · {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 6 }}>
+              💡 {T("Select all locations where this employee is allowed to clock in. If they clock in from elsewhere, they must explain why.", "اختر جميع المواقع المسموح للموظف بتسجيل الحضور منها. إذا سجّل من مكان آخر يجب أن يوضح السبب.")}
+            </div>
+          </div>
           <div className="form-actions">
             <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
             <Btn color="primary" disabled={saving} onClick={async () => {
               setSaving(true);
-              await db("employees", "PATCH", { name: modalData.name, name_ar: modalData.name_ar, email: modalData.email, phone: modalData.phone, department: modalData.department, position: modalData.position, salary: modalData.salary, status: modalData.status }, `?id=eq.${modalData.id}`);
+              const locs = (() => {
+                try {
+                  const v = modalData.approved_locations;
+                  return Array.isArray(v) ? v : JSON.parse(v || '["office"]');
+                } catch { return ["office"]; }
+              })();
+              await db("employees", "PATCH", {
+                name: modalData.name, name_ar: modalData.name_ar,
+                email: modalData.email, phone: modalData.phone,
+                department: modalData.department, position: modalData.position,
+                salary: modalData.salary, status: modalData.status,
+                approved_locations: JSON.stringify(locs),
+              }, `?id=eq.${modalData.id}`);
               await loadAll(); setSaving(false); closeModal();
             }}>{saving ? <span className="spinner" /> : T("Save Changes", "حفظ التغييرات")}</Btn>
           </div>
@@ -1262,7 +1263,7 @@ export default function App() {
         <div className="tab-bar">
           {[
             { id: "clockin", label: T("🕐 Clock In/Out", "🕐 تسجيل الحضور") },
-            { id: "reports", label: T("📊 Reports", "📊 التقارير") },
+            ...(role === "admin" || role === "hr" ? [{ id: "reports", label: T("📊 Reports", "📊 التقارير") }] : []),
           ].map(tab => (
             <button key={tab.id} className={`tab ${attTab === tab.id ? "active" : ""}`} onClick={() => setAttTab(tab.id)}>{tab.label}</button>
           ))}
@@ -1349,36 +1350,59 @@ export default function App() {
               </div>
             </div>
 
-            {/* Location Modal */}
-            <Modal show={showLocModal} onClose={() => {}} title={T("📍 Where are you working from?", "📍 من أين تعمل؟")}>
-              <div className="info-box" style={{ borderColor: "var(--warn)", background: "var(--warnb)" }}>
-                ⚠️ {T("You are outside all approved work locations. Please select your location and provide a reason.", "أنت خارج جميع المواقع المعتمدة. يرجى تحديد موقعك وذكر السبب.")}
+            {/* Outside Location Modal */}
+            <Modal show={showLocModal} onClose={() => {}} title={T("📍 خارج موقع العمل المحدد", "📍 Outside Your Assigned Location")}>
+              <div style={{ background: "var(--warnb)", border: "1px solid var(--warn)", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 14 }}>
+                ⚠️ <strong>{T("خارج موقع العمل المحدد", "Outside Your Assigned Work Location")}</strong><br />
+                <span style={{ fontSize: 13, color: "var(--t2)", marginTop: 4, display: "block" }}>
+                  {T("You are not at any of your approved work locations. Please select where you are working from.", "أنت لست في أي من مواقع عملك المعتمدة. يرجى تحديد مكان عملك.")}
+                </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                {[T("Home", "المنزل"), T("Client Visit", "زيارة عميل"), T("Field Work", "عمل ميداني"), T("Other", "أخرى")].map(loc => (
-                  <button key={loc} onClick={() => setCustomLoc(loc)}
-                    style={{ padding: "12px 16px", background: customLoc === loc ? "var(--acc)" : "transparent", border: `1px solid ${customLoc === loc ? "var(--acc)" : "var(--border)"}`, color: customLoc === loc ? "white" : "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, textAlign: "left", transition: "all 0.15s" }}>
-                    {customLoc === loc ? "✓ " : ""}{loc}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                {[
+                  { id: "home", label: T("🏠 Home", "🏠 المنزل"), labelEn: "Home" },
+                  { id: "other", label: T("📍 Other Location", "📍 موقع آخر"), labelEn: "Other" },
+                ].map(opt => (
+                  <button key={opt.id} onClick={() => { setCustomLoc(opt.id); if (opt.id !== "other") setModalData({ ...modalData, otherName: "" }); }}
+                    style={{ padding: "14px 18px", background: customLoc === opt.id ? "var(--acc)" : "var(--bg2)", border: `2px solid ${customLoc === opt.id ? "var(--acc)" : "var(--border)"}`, color: customLoc === opt.id ? "white" : "var(--t1)", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 600, textAlign: "left", transition: "all 0.15s" }}>
+                    {opt.label}
                   </button>
                 ))}
               </div>
-              {customLoc === T("Other", "أخرى") && (
+
+              {customLoc === "other" && (
                 <div className="form-group">
-                  <label>{T("Specify location", "حدد الموقع")}</label>
-                  <input placeholder={T("e.g. Alexandria branch, client office...", "مثال: فرع الإسكندرية، مكتب العميل...")} onChange={e => setCustomLoc(e.target.value)} />
+                  <label>{T("Location Name *", "اسم الموقع *")}</label>
+                  <input
+                    value={modalData.otherName || ""}
+                    onChange={e => setModalData({ ...modalData, otherName: e.target.value })}
+                    placeholder={T("e.g. Client office, Alexandria branch...", "مثال: مكتب العميل، فرع الإسكندرية...")}
+                    style={{ fontSize: 14 }}
+                  />
                 </div>
               )}
+
               <div className="form-group" style={{ marginTop: 8 }}>
-                <label>{T("Reason for working outside office *", "سبب العمل خارج المكتب *")}</label>
-                <textarea rows={3} value={modalData.outsideReason || ""} onChange={e => setModalData({ ...modalData, outsideReason: e.target.value })} placeholder={T("Explain why you are working from this location today...", "اشرح سبب عملك من هذا الموقع اليوم...")} />
+                <label>{T("Reason *", "السبب *")}</label>
+                <textarea rows={2} value={modalData.outsideReason || ""} onChange={e => setModalData({ ...modalData, outsideReason: e.target.value })}
+                  placeholder={T("Why are you working from this location today?", "لماذا تعمل من هذا الموقع اليوم؟")} />
               </div>
+
               <div className="form-actions">
-                <Btn color="primary" disabled={!customLoc || !modalData.outsideReason || saving} onClick={async () => {
-                  setShowLocModal(false);
-                  const label = `${customLoc} — ${modalData.outsideReason}`;
-                  await doSaveClockIn(pendingTime, pendingLoc, label, photo);
-                  setCustomLoc(""); setModalData({});
-                }}>{saving ? <span className="spinner" /> : T("✅ Confirm & Clock In", "✅ تأكيد وتسجيل الدخول")}</Btn>
+                <Btn color="primary"
+                  disabled={!customLoc || !modalData.outsideReason || (customLoc === "other" && !modalData.otherName) || saving}
+                  onClick={async () => {
+                    setShowLocModal(false);
+                    const locName = customLoc === "home"
+                      ? T("Home", "المنزل")
+                      : modalData.otherName;
+                    const label = `${locName} — ${modalData.outsideReason}`;
+                    await doSaveClockIn(pendingTime, pendingLoc, label, photo);
+                    setCustomLoc(""); setModalData({});
+                  }}>
+                  {saving ? <span className="spinner" /> : T("✅ Confirm & Clock In", "✅ تأكيد وتسجيل الدخول")}
+                </Btn>
               </div>
             </Modal>
           </>
@@ -2196,9 +2220,11 @@ export default function App() {
       <div className="fade-in">
         <div className="card-header" style={{ marginBottom: 20 }}>
           <div className="card-title">🕐 {T("Shift Management", "إدارة المناوبات")}</div>
-          <Btn color="primary" onClick={() => openModal("addShift", { name: "", name_ar: "", start_time: "09:00", end_time: "17:00", grace_minutes: 15, is_night_shift: false, color: "#10b981" })}>
-            ➕ {T("New Shift", "مناوبة جديدة")}
-          </Btn>
+          {role === "admin" && (
+            <Btn color="primary" onClick={() => openModal("addShift", { name: "", name_ar: "", start_time: "09:00", end_time: "17:00", grace_minutes: 15, is_night_shift: false, color: "#10b981" })}>
+              ➕ {T("New Shift", "مناوبة جديدة")}
+            </Btn>
+          )}
         </div>
 
         {/* Shifts List */}
@@ -2210,7 +2236,7 @@ export default function App() {
                   <div style={{ fontWeight: 700, fontSize: 15, color: "var(--t1)" }}>{ar ? shift.name_ar : shift.name}</div>
                   {shift.is_night_shift && <span className="badge purple" style={{ fontSize: 11, marginTop: 4 }}>🌙 {T("Night Shift", "وردية ليلية")}</span>}
                 </div>
-                <Btn size="sm" color="outline" onClick={() => openModal("editShift", { ...shift })}>✏️</Btn>
+                {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editShift", { ...shift })}>✏️</Btn>}
               </div>
               <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--t2)" }}>
                 <div>🟢 {T("Start", "بداية")}: <strong style={{ color: "var(--t1)" }}>{shift.start_time}</strong></div>
