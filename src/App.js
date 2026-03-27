@@ -795,12 +795,6 @@ export default function App() {
     // Step 3: Check employee's assigned locations
     const clockTime = new Date();
     const day = clockTime.getDay();
-    const isFriday = day === 5;
-
-    if (isFriday) {
-      setGpsErr(T("Today is Friday — it's a day off! 🎉", "اليوم جمعة — يوم إجازة! 🎉"));
-      setVerifying(null); return;
-    }
 
     // Get employee's approved location IDs
     const empApprovedLocs = currentEmployee?.approved_locations
