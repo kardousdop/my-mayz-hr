@@ -38,6 +38,22 @@ function getFaceIO() {
   return null;
 }
 
+function waitForFaceIO(retries = 20, delay = 300) {
+  return new Promise((resolve, reject) => {
+    const attempt = (n) => {
+      if (window.faceIO) {
+        if (!faceioInstance) faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
+        resolve(faceioInstance);
+      } else if (n <= 0) {
+        reject(new Error("FaceIO SDK not loaded. Please refresh the page."));
+      } else {
+        setTimeout(() => attempt(n - 1), delay);
+      }
+    };
+    attempt(retries);
+  });
+}
+
 // ============================================================
 // GPS HELPER - Real browser Geolocation API
 // ============================================================
@@ -843,9 +859,11 @@ export default function HRApp() {
 
     // STEP 2: Real FaceIO — required for ALL users, no skipping
     setVerifying("face");
-    const fio = getFaceIO();
-    if (!fio) {
-      setFaceError("Face recognition is not available. Please refresh the page and try again.");
+    let fio;
+    try {
+      fio = await waitForFaceIO();
+    } catch (e) {
+      setFaceError(e.message);
       setVerifying(null);
       return;
     }
