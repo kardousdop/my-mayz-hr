@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 
 // ============================================================
 // SUPABASE CLIENT - Connect to your real database
@@ -23,25 +23,7 @@ async function supabaseQuery(table, method = "GET", body = null, query = "") {
   } catch (e) { console.error("Supabase error:", e); return null; }
 }
 
-// ============================================================
-// FACEIO HELPER - Uses your Public ID fioa9051
-// ============================================================
-// FACEIO HELPER
-// ============================================================
-const FACEIO_PUBLIC_ID = "fioa9051";
-let faceioInstance = null;
-
-async function waitForFaceIO() {
-  if (faceioInstance) return faceioInstance;
-  try {
-    const { default: faceIOLib } = await import("@faceio/fiojs");
-    faceioInstance = new faceIOLib(FACEIO_PUBLIC_ID);
-    return faceioInstance;
-  } catch(e) {
-    faceioInstance = null;
-    throw new Error("FaceIO init error: " + (e.message || e));
-  }
-}
+// FaceIO removed — using browser camera instead
 
 // ============================================================
 // GPS HELPER - Real browser Geolocation API
