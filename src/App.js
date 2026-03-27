@@ -757,8 +757,32 @@ export default function HRApp() {
   const [employees, setEmployees] = useState(fallbackEmployees);
   const [dbAttendanceLogs, setDbAttendanceLogs] = useState(attendanceLogs);
 
-  const t = T[lang];
-  const isRTL = lang === "ar";
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [locationLabel, setLocationLabel] = useState(null);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [customLocation, setCustomLocation] = useState("");
+  const [pendingClockTime, setPendingClockTime] = useState(null);
+
+  // Camera photo capture
+  const capturePhoto = () => new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    const canvas = document.createElement("canvas");
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+      .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        setTimeout(() => {
+          canvas.width = 320;
+          canvas.height = 240;
+          canvas.getContext("2d").drawImage(video, 0, 0, 320, 240);
+          stream.getTracks().forEach(t => t.stop());
+          resolve(canvas.toDataURL("image/jpeg", 0.7));
+        }, 1500);
+      })
+      .catch(err => reject(err));
+  });
+
+
 
   // Clock tick
   useEffect(() => {
@@ -825,7 +849,7 @@ export default function HRApp() {
   };
 
   // ============================================================
-  // REAL CLOCK IN — GPS → FaceIO → Save to Supabase
+  // REAL CLOCK IN — GPS → Camera Photo → Save to Supabase
   // ============================================================
   const handleClockIn = async () => {
     setGpsError("");
@@ -833,72 +857,74 @@ export default function HRApp() {
     setGpsVerified(false);
     setFaceVerified(false);
     setGpsLocation(null);
+    setCapturedPhoto(null);
 
     // STEP 1: Real GPS
     setVerifying("gps");
+    let loc;
     try {
-      const loc = await getGPSLocation();
+      loc = await getGPSLocation();
       setGpsLocation(loc);
       setGpsVerified(true);
     } catch (err) {
       setGpsError(err.message);
       setVerifying(null);
-      return; // Stop — GPS is required
+      return;
     }
 
-    // STEP 2: Real FaceIO — required for ALL users, no skipping
+    // STEP 2: Camera photo
     setVerifying("face");
-    let fio;
     try {
-      fio = await waitForFaceIO();
-    } catch (e) {
-      setFaceError(e.message);
+      const photoBase64 = await capturePhoto();
+      setCapturedPhoto(photoBase64);
+      setFaceVerified(true);
+    } catch (err) {
+      setFaceError(err.message || "Camera access denied. Please allow camera and try again.");
       setVerifying(null);
-      return;
-    }
-    const faceEnrolled = localStorage.getItem("faceio_enrolled");
-    try {
-      if (!faceEnrolled) {
-        const enrolled = await fio.enroll({
-          locale: lang === "ar" ? "ar" : "auto",
-          payload: { userId: currentUser?.id || "EMP001", name: "Ahmed Kardous" },
-        });
-        localStorage.setItem("faceio_enrolled", "true");
-        localStorage.setItem("faceio_facial_id", enrolled.facialId);
-        setFaceVerified(true);
-        console.log("FaceIO enrolled:", enrolled.facialId);
-      } else {
-        const resp = await fio.authenticate({ locale: lang === "ar" ? "ar" : "auto" });
-        setFaceVerified(true);
-        console.log("FaceIO authenticated:", resp.facialId);
-      }
-    } catch (faceErr) {
-      const code = faceErr.code !== undefined ? faceErr.code : faceErr;
-      setFaceError(`Face scan failed (code: ${code}). Please try again.`);
-      setVerifying(null);
-      faceioInstance = null;
       return;
     }
 
-    // STEP 3: Save attendance to Supabase
+    // STEP 3: Save to Supabase
     setVerifying("saving");
     const clockTime = new Date();
+
+    // Determine location label
+    const officeLat = 29.9921;
+    const officeLng = 31.0316;
+    const distKm = Math.sqrt(Math.pow(loc.lat - officeLat, 2) + Math.pow(loc.lng - officeLng, 2)) * 111;
+    const locationLabel = distKm < 0.5 ? "Office" : null;
+    setLocationLabel(locationLabel);
+
+    if (!locationLabel) {
+      setShowLocationModal(true);
+      setVerifying(null);
+      setPendingClockTime(clockTime);
+      return;
+    }
+
+    await saveAttendance(clockTime, loc, locationLabel);
+  };
+
+  const saveAttendance = async (clockTime, loc, locationLabel) => {
+    setVerifying("saving");
     if (SUPABASE_ANON_KEY) {
       await supabaseQuery("attendance", "POST", {
         employee_id: currentUser?.id || "EMP001",
         date: clockTime.toISOString().split("T")[0],
         check_in: clockTime.toISOString(),
-        gps_lat: gpsLocation?.lat || null,
-        gps_lng: gpsLocation?.lng || null,
-        face_verified: true,
+        gps_lat: loc?.lat || gpsLocation?.lat || null,
+        gps_lng: loc?.lng || gpsLocation?.lng || null,
+        face_photo: capturedPhoto || null,
+        location_label: locationLabel,
         status: clockTime.getHours() >= 8 && clockTime.getMinutes() > 15 ? "late" : "present",
       });
     }
-
     setClockedIn(true);
     setClockInTime(clockTime);
     setVerifying(null);
   };
+
+
 
   const handleClockOut = async () => {
     const clockTime = new Date();
@@ -1059,15 +1085,16 @@ export default function HRApp() {
                 {gpsError && <div className="gps-coords" style={{ color: "var(--danger)" }}>{gpsError}</div>}
               </div>
             </div>
-            {/* Face Step */}
+            {/* Face/Camera Step */}
             <div className={`verify-step ${faceError ? "error" : faceVerified ? "success" : ""}`}>
               <span className={`verify-icon ${faceVerified ? "done" : faceError ? "err" : "wait"}`}>
                 {faceVerified ? "✓" : faceError ? "✗" : verifying === "face" ? <span className="spinner" /> : "○"}
               </span>
               <Icons.Camera />
-              <div>
-                <span>{faceVerified ? t.faceVerified : faceError ? t.faceError : verifying === "face" ? t.verifying : t.faceRecognition}</span>
+              <div style={{ flex: 1 }}>
+                <span>{faceVerified ? "Photo Captured ✓" : faceError ? t.faceError : verifying === "face" ? "Opening camera..." : "Face Photo"}</span>
                 {faceError && <div className="gps-coords" style={{ color: "var(--danger)" }}>{faceError}</div>}
+                {capturedPhoto && <img src={capturedPhoto} alt="captured" style={{ width: 60, height: 45, borderRadius: 6, marginTop: 6, objectFit: "cover" }} />}
               </div>
             </div>
           </div>
@@ -1087,6 +1114,34 @@ export default function HRApp() {
           </button>
         </div>
       </div>
+
+      {/* Location Modal — shown when employee is outside office */}
+      <Modal show={showLocationModal} onClose={() => {}} title="📍 Where are you working from?">
+        <p style={{ color: "var(--text-secondary)", marginBottom: 16, fontSize: 14 }}>
+          You are outside the office. Please select or enter your work location.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          {["Home", "Out of Office", "Client Site", "Other"].map(loc => (
+            <button key={loc} className={`btn ${customLocation === loc ? "btn-primary" : "btn-outline"}`}
+              onClick={() => setCustomLocation(loc)}>{loc}</button>
+          ))}
+        </div>
+        {customLocation === "Other" && (
+          <div className="form-group">
+            <input placeholder="Enter location name..." value={customLocation === "Other" ? "" : customLocation}
+              onChange={e => setCustomLocation(e.target.value)} />
+          </div>
+        )}
+        <div className="form-actions">
+          <button className="btn btn-primary" disabled={!customLocation}
+            onClick={async () => {
+              setShowLocationModal(false);
+              await saveAttendance(pendingClockTime, gpsLocation, customLocation);
+            }}>
+            Confirm & Clock In
+          </button>
+        </div>
+      </Modal>
 
       <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
         {[
