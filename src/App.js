@@ -1354,6 +1354,8 @@ export default function App() {
     const dateStr = now.toLocaleDateString(ar ? "ar-EG" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     const filtered = attendance.filter(a => {
+      // Employees only see their own records
+      if (role === "employee" && a.employee_id !== currentEmployee?.id) return false;
       if (reportFilter.from && a.date < reportFilter.from) return false;
       if (reportFilter.to && a.date > reportFilter.to) return false;
       if (reportFilter.emp && a.employee_id !== Number(reportFilter.emp)) return false;
@@ -1373,7 +1375,7 @@ export default function App() {
         <div className="tab-bar">
           {[
             { id: "clockin", label: T("🕐 Clock In/Out", "🕐 تسجيل الحضور") },
-            ...(role === "admin" || role === "hr" ? [{ id: "reports", label: T("📊 Reports", "📊 التقارير") }] : []),
+            { id: "reports", label: (role === "admin" || role === "hr" || role === "accountant") ? T("📊 Reports", "📊 التقارير") : T("📊 My Attendance", "📊 حضوري") },
           ].map(tab => (
             <button key={tab.id} className={`tab ${attTab === tab.id ? "active" : ""}`} onClick={() => setAttTab(tab.id)}>{tab.label}</button>
           ))}
@@ -1564,13 +1566,15 @@ export default function App() {
                 <div className="form-group"><label>{T("From Date", "من تاريخ")}</label><input type="date" value={reportFilter.from} onChange={e => setReportFilter({ ...reportFilter, from: e.target.value })} /></div>
                 <div className="form-group"><label>{T("To Date", "إلى تاريخ")}</label><input type="date" value={reportFilter.to} onChange={e => setReportFilter({ ...reportFilter, to: e.target.value })} /></div>
               </div>
-              <div className="form-group">
-                <label>{T("Employee", "الموظف")}</label>
-                <select value={reportFilter.emp} onChange={e => setReportFilter({ ...reportFilter, emp: e.target.value })}>
-                  <option value="">{T("All Employees", "جميع الموظفين")}</option>
-                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
-              </div>
+              {(role === "admin" || role === "hr" || role === "accountant") && (
+                <div className="form-group">
+                  <label>{T("Employee", "الموظف")}</label>
+                  <select value={reportFilter.emp} onChange={e => setReportFilter({ ...reportFilter, emp: e.target.value })}>
+                    <option value="">{T("All Employees", "جميع الموظفين")}</option>
+                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                  </select>
+                </div>
+              )}
               <Btn color="outline" size="sm" onClick={() => setReportFilter({ from: "", to: "", emp: "", status: "" })}>🗑️ {T("Clear Filters", "مسح التصفية")}</Btn>
             </div>
 
