@@ -1118,15 +1118,24 @@ export default function App() {
                       <td>{emp.department || "—"}</td>
                       <td>{emp.position || "—"}</td>
                       <td>
-                        <div style={{ lineHeight: 1.4 }}>
-                          <div style={{ color: "var(--ok)", fontWeight: 700, fontSize: 15 }}>
-                            {Number((emp.net_salary || emp.salary) || 0).toLocaleString()} EGP
+                        <div style={{ lineHeight: 1.5 }}>
+                          <div style={{ color: "var(--ok)", fontWeight: 700, fontSize: 14 }}>
+                            {Number(emp.salary || 0).toLocaleString()} EGP
+                            <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400, marginLeft: 4 }}>{T("base", "أساسي")}</span>
                           </div>
-                          {(emp.allowances > 0 || emp.bonuses > 0 || emp.deductions > 0 || emp.tax > 0 || emp.insurance > 0) && (
-                            <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>
-                              Base: {Number(emp.salary||0).toLocaleString()}
-                              {emp.allowances > 0 && <span style={{ color: "var(--ok)" }}> +{Number(emp.allowances).toLocaleString()}</span>}
-                              {(emp.deductions > 0 || emp.tax > 0 || emp.insurance > 0) && <span style={{ color: "var(--err)" }}> -{Number((emp.deductions||0)+(emp.tax||0)+(emp.insurance||0)).toLocaleString()}</span>}
+                          {(Number(emp.allowances)||0) + (Number(emp.bonuses)||0) > 0 && (
+                            <div style={{ fontSize: 11, color: "var(--ok)" }}>
+                              +{(Number(emp.allowances||0) + Number(emp.bonuses||0)).toLocaleString()} {T("benefits", "بدلات")}
+                            </div>
+                          )}
+                          {(Number(emp.deductions)||0) + (Number(emp.tax)||0) + (Number(emp.insurance)||0) > 0 && (
+                            <div style={{ fontSize: 11, color: "var(--err)" }}>
+                              -{(Number(emp.deductions||0) + Number(emp.tax||0) + Number(emp.insurance||0)).toLocaleString()} {T("deductions", "خصومات")}
+                            </div>
+                          )}
+                          {Number(emp.net_salary) > 0 && Number(emp.net_salary) !== Number(emp.salary) && (
+                            <div style={{ fontSize: 12, color: "var(--acc)", fontWeight: 600, marginTop: 2 }}>
+                              = {Number(emp.net_salary).toLocaleString()} {T("net", "صافي")}
                             </div>
                           )}
                         </div>
@@ -1338,19 +1347,22 @@ export default function App() {
               const curMonth = months[new Date().getMonth()];
               const curYear = new Date().getFullYear();
 
-              // Save to employee record
+              // Save to employee record (net salary WITHOUT loan - loan shown separately in payroll)
               const empResult = await db("employees", "PATCH", { salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${modalData.id}`);
               console.log("Salary save result:", empResult);
 
-              // Auto-create or update payroll for this month
+              // Auto-create or update payroll for this month (WITH loan deduction)
+              const activeLoan = loans.find(l => l.employee_id === modalData.id && l.status === "active");
+              const loanDed = activeLoan ? Number(activeLoan.monthly_deduction) : 0;
+              const netWithLoan = net - loanDed;
               const existing = payroll.find(p => p.employee_id === modalData.id && p.month === curMonth && p.year === curYear);
               if (existing) {
-                await db("payroll", "PATCH", { base_salary: base, allowances, bonuses, deductions, tax, insurance, net_salary: net }, `?id=eq.${existing.id}`);
+                await db("payroll", "PATCH", { base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: loanDed, net_salary: netWithLoan }, `?id=eq.${existing.id}`);
               } else {
-                await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: 0, net_salary: net, status: "pending" });
+                await db("payroll", "POST", { employee_id: modalData.id, month: curMonth, year: curYear, base_salary: base, allowances, bonuses, deductions, tax, insurance, loan_deduction: loanDed, net_salary: netWithLoan, status: "pending" });
               }
               await loadAll(); setSaving(false); closeModal();
-              alert(T(`✅ Salary saved! Net: ${net.toLocaleString()} EGP. Payroll record created for ${curMonth} ${curYear}.`, `✅ تم حفظ الراتب! الصافي: ${net.toLocaleString()} جنيه. تم إنشاء مسير ${curMonth} ${curYear}.`));
+              alert(T(`✅ Saved! Structural net: ${net.toLocaleString()} EGP. Payroll net (after loan): ${netWithLoan.toLocaleString()} EGP`, `✅ تم الحفظ! الصافي الهيكلي: ${net.toLocaleString()} جنيه. صافي مسير الراتب (بعد القرض): ${netWithLoan.toLocaleString()} جنيه`));
             }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
           </div>
         </Modal>
@@ -2004,6 +2016,7 @@ export default function App() {
     const myExcuses = excuses.filter(e => e.employee_id === myId);
     const myLeaves = leaveReqs.filter(l => l.employee_id === myId);
     const myLoans = loans.filter(l => l.employee_id === myId && l.status === "active");
+    // Pending lists: admin/hr see ALL employees' requests, others see only their own
     const pendingEx = (role === "admin" || role === "hr") ? excuses.filter(e => e.status === "pending") : myExcuses.filter(e => e.status === "pending");
     const pendingLv = (role === "admin" || role === "hr") ? leaveReqs.filter(l => l.status === "pending") : myLeaves.filter(l => l.status === "pending");
     const pendingLn = (role === "admin" || role === "hr" || role === "accountant") ? loans.filter(l => l.status === "pending") : [];
