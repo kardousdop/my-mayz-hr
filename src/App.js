@@ -1958,10 +1958,6 @@ export default function App() {
 
   const pendingBadge = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length + loans.filter(l => l.status === "pending").length;
 
-  // Safety: make sure page is valid for current role
-  const validPages = allNavItems ? allNavItems.filter(n => n.roles?.includes(role)).map(n => n.id) : [];
-  const safePage = validPages.includes(page) ? page : (validPages[0] || "attendance");
-
   // Role-based navigation
   const allNavItems = [
     { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
@@ -1975,6 +1971,10 @@ export default function App() {
     { id: "settings", icon: "⚙️", label: T("Settings", "الإعدادات"), roles: ["admin"] },
   ];
   const navItems = allNavItems.filter(n => n.roles.includes(role));
+
+  // Safety: ensure page is valid for current role
+  const validPages = navItems.map(n => n.id);
+  const safePage = validPages.includes(page) ? page : (validPages[0] || "attendance");
 
   // ============================================================
   // ANALYTICS DASHBOARD
