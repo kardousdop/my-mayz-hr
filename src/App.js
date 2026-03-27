@@ -841,30 +841,41 @@ export default function HRApp() {
       return; // Stop — GPS is required
     }
 
-    // STEP 2: Real FaceIO
+    // STEP 2: Real FaceIO — required for ALL users, no skipping
     setVerifying("face");
     const fio = getFaceIO();
-    if (fio) {
-      try {
-        const resp = await fio.authenticate({ locale: lang === "ar" ? "ar" : "auto" });
-        setFaceVerified(true);
-        console.log("FaceIO authenticated:", resp.facialId);
-      } catch (err) {
-        const code = err.code || err;
-        // Allow admin to skip if face recognition fails or user cancels
-        if (role === "admin") {
+    if (!fio) {
+      setFaceError("Face recognition is not available. Please refresh the page and try again.");
+      setVerifying(null);
+      return;
+    }
+    try {
+      // First try to authenticate (for returning users)
+      const resp = await fio.authenticate({ locale: lang === "ar" ? "ar" : "auto" });
+      setFaceVerified(true);
+      console.log("FaceIO authenticated:", resp.facialId);
+    } catch (authErr) {
+      const code = authErr.code !== undefined ? authErr.code : authErr;
+      // Error code 10 means no face enrolled yet — try to enroll instead
+      if (code === 10 || code === "10") {
+        try {
+          const enrolled = await fio.enroll({
+            locale: lang === "ar" ? "ar" : "auto",
+            payload: { userId: currentUser?.id || "EMP001", name: "Ahmed Kardous" },
+          });
           setFaceVerified(true);
-          console.warn("FaceIO skipped for admin. Error code:", code);
-        } else {
-          setFaceError(typeof err === "object" ? (err.message || `Error code: ${code}`) : String(err));
+          console.log("FaceIO enrolled new face:", enrolled.facialId);
+        } catch (enrollErr) {
+          const enrollCode = enrollErr.code !== undefined ? enrollErr.code : enrollErr;
+          setFaceError(`Face enrollment failed (code: ${enrollCode}). Please try again.`);
           setVerifying(null);
           return;
         }
+      } else {
+        setFaceError(`Face recognition failed (code: ${code}). Please try again.`);
+        setVerifying(null);
+        return;
       }
-    } else {
-      // FaceIO SDK not loaded — skip for now, mark as not available
-      console.warn("FaceIO SDK not loaded. Skipping face verification.");
-      setFaceVerified(true);
     }
 
     // STEP 3: Save attendance to Supabase
