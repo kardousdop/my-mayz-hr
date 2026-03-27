@@ -40,39 +40,26 @@ function getGPS() {
 }
 
 // ============================================================
-// FACEIO - NPM package
+// CAMERA PHOTO CAPTURE
 // ============================================================
-const FACEIO_PUBLIC_ID = "fioa9051";
-let faceioInstance = null;
-
-async function getFaceIO() {
-  if (faceioInstance) return faceioInstance;
-  try {
-    // Try NPM package first
-    const { default: faceIO } = await import("@faceio/fiojs");
-    faceioInstance = new faceIO(FACEIO_PUBLIC_ID);
-    return faceioInstance;
-  } catch(e) {
-    // Fallback to window.faceIO from CDN in index.html
-    if (window.faceIO) {
-      faceioInstance = new window.faceIO(FACEIO_PUBLIC_ID);
-      return faceioInstance;
-    }
-    throw new Error("Face ID service unavailable. Please refresh and try again.");
-  }
-}
-
-async function verifyFace() {
-  const fio = await getFaceIO();
-  const key = "faceio_enrolled_" + FACEIO_PUBLIC_ID;
-  const enrolled = localStorage.getItem(key);
-  if (!enrolled) {
-    const result = await fio.enroll({ locale: "auto", payload: { name: "Ahmed Kardous" } });
-    localStorage.setItem(key, result.facialId);
-    return { facialId: result.facialId, isNew: true };
-  }
-  const result = await fio.authenticate({ locale: "auto" });
-  return { facialId: result.facialId, isNew: false };
+function capturePhoto() {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    const canvas = document.createElement("canvas");
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false })
+      .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        setTimeout(() => {
+          canvas.width = 320;
+          canvas.height = 240;
+          canvas.getContext("2d").drawImage(video, 0, 0, 320, 240);
+          stream.getTracks().forEach(t => t.stop());
+          resolve(canvas.toDataURL("image/jpeg", 0.8));
+        }, 1500);
+      })
+      .catch(() => reject(new Error("Camera access denied. Please allow camera and try again.")));
+  });
 }
 function takePhoto() {
   return new Promise((resolve, reject) => {
@@ -456,18 +443,16 @@ export default function App() {
       setGpsErr(e.message); setVerifying(null); return;
     }
 
-    // Step 2: FaceIO Face Verification
+    // Step 2: Camera Photo
     setVerifying("photo");
-    let facialId = null;
+    let photoData = null;
     try {
-      const faceResult = await verifyFace();
-      facialId = faceResult.facialId;
+      photoData = await capturePhoto();
+      setPhoto(photoData);
       setPhotoOk(true);
     } catch (e) {
-      const code = e.code !== undefined ? e.code : e.message || String(e);
-      setPhotoErr(`Face verification failed (${code}). Please try again.`);
+      setPhotoErr(e.message);
       setVerifying(null);
-      faceioInstance = null; // reset so next attempt loads fresh
       return;
     }
 
@@ -477,14 +462,14 @@ export default function App() {
     const clockTime = new Date();
 
     if (isOffice) {
-      await doSaveClockIn(clockTime, loc, T("Office", "المكتب"), facialId);
+      await doSaveClockIn(clockTime, loc, T("Office", "المكتب"), photoData);
     } else {
       setPendingLoc(loc); setPendingTime(clockTime);
       setShowLocModal(true); setVerifying(null);
     }
   };
 
-  const doSaveClockIn = async (clockTime, loc, label, facialId) => {
+  const doSaveClockIn = async (clockTime, loc, label, photoData) => {
     setVerifying("saving");
     const empId = employees[0]?.id || null;
     const isLate = clockTime.getHours() > 8 || (clockTime.getHours() === 8 && clockTime.getMinutes() > 15);
@@ -494,7 +479,7 @@ export default function App() {
       check_in: clockTime.toISOString(),
       gps_lat: loc?.lat, gps_lng: loc?.lng,
       location_label: label,
-      face_photo: facialId ? `face_verified:${facialId}` : null,
+      face_photo: photoData || photo,
       status: isLate ? "late" : "present",
       source: "app",
     });
@@ -809,13 +794,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Face ID Step */}
+                  {/* Camera Photo Step */}
                   <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
                     <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
                     <div style={{ flex: 1, textAlign: "left" }}>
-                      <div>{photoOk ? T("Face ID Verified ✓", "تم التحقق من الوجه ✓") : photoErr ? T("Face ID Error", "خطأ Face ID") : verifying === "photo" ? T("Scanning face...", "جاري مسح الوجه...") : T("Face ID Verification", "التحقق من الوجه")}</div>
+                      <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("Camera Error", "خطأ الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
                       {photoErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{photoErr}</div>}
-                      {photoOk && <div className="gps-coords" style={{ color: "var(--ok)" }}>🎯 {T("Identity confirmed", "تم تأكيد الهوية")}</div>}
+                      {photo && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
                     </div>
                   </div>
                 </div>
