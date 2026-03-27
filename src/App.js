@@ -79,11 +79,81 @@ function takePhoto() {
   });
 }
 
-const OFFICE_LAT = 29.9921;
-const OFFICE_LNG = 31.0316;
-const OFFICE_RADIUS_KM = 0.5;
+// ============================================================
+// WORKING HOURS & SHIFT CONFIG
+// ============================================================
+const MIN_SHIFT_HOURS = 8;
+const DEFAULT_SHIFTS = [
+  { id: 1, name: "Morning Shift", name_ar: "الوردية الصباحية", start_time: "09:00", end_time: "17:00", is_night_shift: false, grace_minutes: 15, color: "#10b981" },
+  { id: 2, name: "Evening Shift", name_ar: "الوردية المسائية", start_time: "14:00", end_time: "22:00", is_night_shift: false, grace_minutes: 15, color: "#f59e0b" },
+  { id: 3, name: "Night Shift",   name_ar: "الوردية الليلية",  start_time: "22:00", end_time: "06:00", is_night_shift: true,  grace_minutes: 15, color: "#6366f1" },
+  { id: 4, name: "Split Shift",   name_ar: "الوردية المقسمة",  start_time: "08:00", end_time: "20:00", is_night_shift: false, grace_minutes: 15, color: "#3b82f6" },
+  { id: 5, name: "Weekend Morning", name_ar: "صباح الأسبوع", start_time: "09:00", end_time: "15:00", is_night_shift: false, grace_minutes: 15, color: "#10b981" },
+];
 
-function distKm(lat1, lng1, lat2, lng2) {
+function getShiftStatus(shift, clockInTime) {
+  if (!shift) return "present";
+  const [sh, sm] = shift.start_time.split(":").map(Number);
+  const grace = shift.grace_minutes || 15;
+  const clockMin = clockInTime.getHours() * 60 + clockInTime.getMinutes();
+  const shiftMin = sh * 60 + sm;
+  // For night shift, adjust comparison
+  let diff = clockMin - shiftMin;
+  if (shift.is_night_shift && diff < -600) diff += 1440;
+  if (diff <= grace) return "present";
+  if (diff <= grace + 60) return "late";
+  return "very_late";
+}
+
+// Approved locations
+const LOCATIONS = {
+  office: {
+    name: "Office",
+    nameAr: "المكتب",
+    lat: 29.9921, lng: 31.0316,
+    radius: 0.3,
+    allowedTypes: ["office", "hr", "admin", "accountant"],
+    strictGPS: false, // office employees CAN work from home on Saturday
+  },
+  warehouse: {
+    name: "Warehouse",
+    nameAr: "المستودع",
+    lat: 30.0100, lng: 31.1800, // ← UPDATE with real coords when confirmed
+    radius: 0.2,
+    allowedTypes: ["warehouse"],
+    strictGPS: true, // MUST be on-site
+  },
+  mall: {
+    name: "Mall of Egypt",
+    nameAr: "مول مصر",
+    lat: 29.9724, lng: 31.0164,
+    radius: 0.2,
+    allowedTypes: ["retail"],
+    strictGPS: true, // MUST be at mall
+  },
+};
+
+// Check which approved location the employee is at
+function getApprovedLocation(lat, lng) {
+  for (const [key, loc] of Object.entries(LOCATIONS)) {
+    const dist = distKm(lat, lng, loc.lat, loc.lng);
+    if (dist <= loc.radius) return { key, ...loc, dist };
+  }
+  return null;
+}
+
+// Check if today is a working day for employee type
+function isWorkingDay(empType) {
+  const day = new Date().getDay(); // 0=Sun, 5=Fri, 6=Sat
+  if (day === 5) return false; // Friday = off for all
+  if (day === 6) {
+    // Saturday: warehouse works, office works from home, retail works at mall
+    return true;
+  }
+  return true;
+}
+
+// Check if today is a working day
   return Math.sqrt(Math.pow(lat1 - lat2, 2) + Math.pow(lng1 - lng2, 2)) * 111;
 }
 
@@ -615,7 +685,8 @@ export default function App() {
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
   const [reportFilter, setReportFilter] = useState({ from: "", to: "", emp: "" });
-  const [clockOutVerifying, setClockOutVerifying] = useState(false);
+  const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
+  const [empShifts, setEmpShifts] = useState([]);
   const [clockOutGpsOk, setClockOutGpsOk] = useState(false);
   const [clockOutPhotoOk, setClockOutPhotoOk] = useState(false);
   const [clockOutPhoto, setClockOutPhoto] = useState(null);
@@ -632,13 +703,15 @@ export default function App() {
   useEffect(() => { if (loggedIn) loadAll(); }, [loggedIn]);
 
   const loadAll = async () => {
-    const [emps, att, ln, ex, lv, pay] = await Promise.all([
+    const [emps, att, ln, ex, lv, pay, sh, esh] = await Promise.all([
       db("employees", "GET", null, "?select=*&order=name"),
       db("attendance", "GET", null, "?select=*&order=date.desc&limit=200"),
       db("loans", "GET", null, "?select=*&order=created_at.desc"),
       db("excuse_requests", "GET", null, "?select=*&order=created_at.desc"),
       db("leave_requests", "GET", null, "?select=*&order=created_at.desc"),
       db("payroll", "GET", null, "?select=*&order=year.desc,month.desc"),
+      db("shifts", "GET", null, "?select=*&order=id"),
+      db("employee_shifts", "GET", null, "?select=*&order=created_at.desc"),
     ]);
     if (emps) setEmployees(emps);
     if (att) setAttendance(att);
@@ -646,6 +719,8 @@ export default function App() {
     if (ex) setExcuses(ex);
     if (lv) setLeaveReqs(lv);
     if (pay) setPayroll(pay);
+    if (sh && sh.length > 0) setShifts(sh);
+    if (esh) setEmpShifts(esh);
   };
 
   const openModal = (name, data = {}) => { setActiveModal(name); setModalData(data); };
@@ -696,14 +771,43 @@ export default function App() {
       return;
     }
 
-    // Step 3: Location check
-    const dist = distKm(loc.lat, loc.lng, OFFICE_LAT, OFFICE_LNG);
-    const isOffice = dist < OFFICE_RADIUS_KM;
+    // Step 3: Smart location check
+    const approvedLoc = getApprovedLocation(loc.lat, loc.lng);
     const clockTime = new Date();
+    const day = clockTime.getDay();
+    const isSaturday = day === 6;
+    const isFriday = day === 5;
+    const empType = currentEmployee?.employee_type || "office";
 
-    if (isOffice) {
-      await doSaveClockIn(clockTime, loc, T("Office", "المكتب"), photoData);
+    // Friday check — no one works
+    if (isFriday) {
+      setGpsErr(T("Today is Friday — it's a day off! 🎉", "اليوم جمعة — يوم إجازة! 🎉"));
+      setVerifying(null); return;
+    }
+
+    // Warehouse employees — MUST be at warehouse
+    if (empType === "warehouse" && (!approvedLoc || approvedLoc.key !== "warehouse")) {
+      setGpsErr(T("Warehouse employees must clock in from the warehouse location only.", "موظفو المستودع يجب أن يسجلوا الحضور من موقع المستودع فقط."));
+      setVerifying(null); return;
+    }
+
+    // Retail employees — MUST be at mall
+    if (empType === "retail" && (!approvedLoc || approvedLoc.key !== "mall")) {
+      setGpsErr(T("Retail employees must clock in from Mall of Egypt only.", "موظفو المتجر يجب أن يسجلوا الحضور من مول مصر فقط."));
+      setVerifying(null); return;
+    }
+
+    // Office employees on Saturday → must select Home
+    if (empType === "office" && isSaturday && !approvedLoc) {
+      setPendingLoc(loc); setPendingTime(clockTime);
+      setShowLocModal(true); setVerifying(null); return;
+    }
+
+    if (approvedLoc) {
+      // At an approved location
+      await doSaveClockIn(clockTime, loc, approvedLoc.name, photoData);
     } else {
+      // Outside all approved locations → ask for reason
       setPendingLoc(loc); setPendingTime(clockTime);
       setShowLocModal(true); setVerifying(null);
     }
@@ -712,16 +816,27 @@ export default function App() {
   const doSaveClockIn = async (clockTime, loc, label, photoData) => {
     setVerifying("saving");
     const empId = currentEmployee?.id || employees[0]?.id || null;
-    const isLate = clockTime.getHours() > 8 || (clockTime.getHours() === 8 && clockTime.getMinutes() > 15);
+    const status = (() => {
+      const empShift = empShifts.find(es => es.employee_id === (currentEmployee?.id || employees[0]?.id));
+      const shift = empShift ? shifts.find(s => s.id === empShift.shift_id) : shifts[0];
+      return getShiftStatus(shift, clockTime);
+    })();
+    const day = clockTime.getDay();
+    const isSaturday = day === 6;
+    const empType = currentEmployee?.employee_type || "office";
+
     await db("attendance", "POST", {
       employee_id: empId,
       date: clockTime.toISOString().split("T")[0],
       check_in: clockTime.toISOString(),
-      gps_lat: loc?.lat, gps_lng: loc?.lng,
+      gps_lat: loc?.lat,
+      gps_lng: loc?.lng,
       location_label: label,
       face_photo: photoData || photo,
-      status: isLate ? "late" : "present",
+      status,
       source: "app",
+      employee_type: empType,
+      is_saturday: isSaturday,
     });
     setClockedIn(true); setClockInTime(clockTime); setLocLabel(label);
     setVerifying(null);
@@ -729,6 +844,18 @@ export default function App() {
   };
 
   const handleClockOut = async () => {
+    // Check minimum shift duration
+    if (clockInTime) {
+      const hoursWorked = (new Date() - clockInTime) / 3600000;
+      if (hoursWorked < MIN_SHIFT_HOURS) {
+        const remaining = (MIN_SHIFT_HOURS - hoursWorked).toFixed(1);
+        const ok = window.confirm(
+          `You have only worked ${hoursWorked.toFixed(1)}h out of ${MIN_SHIFT_HOURS}h minimum.\n${remaining}h remaining.\n\nClocking out now will be flagged as an INCOMPLETE SHIFT. Continue?`
+        );
+        if (!ok) return;
+      }
+    }
+
     setClockOutVerifying(true);
     setClockOutGpsOk(false);
     setClockOutPhotoOk(false);
@@ -746,16 +873,19 @@ export default function App() {
     // Save
     const clockTime = new Date();
     const today = clockTime.toISOString().split("T")[0];
-    const empId = employees[0]?.id;
+    const empId = currentEmployee?.id || employees[0]?.id;
     const rec = attendance.find(a => a.date === today && a.employee_id === empId && !a.check_out);
     if (rec) {
       const hours = Math.round(((clockTime - new Date(rec.check_in)) / 3600000) * 100) / 100;
+      const incomplete = hours < MIN_SHIFT_HOURS;
       await db("attendance", "PATCH", {
         check_out: clockTime.toISOString(),
         hours_worked: hours,
         checkout_gps_lat: outLoc?.lat || null,
         checkout_gps_lng: outLoc?.lng || null,
         checkout_photo: outPhoto || null,
+        status: incomplete ? "incomplete" : rec.status,
+        notes: incomplete ? `Incomplete shift: ${hours}h worked (min ${MIN_SHIFT_HOURS}h)` : null,
       }, `?id=eq.${rec.id}`);
     }
     setClockedIn(false); setClockInTime(null); setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
@@ -978,14 +1108,13 @@ export default function App() {
             <div className="form-group"><label>{T("Base Salary (EGP)", "الراتب الأساسي")}</label><input type="number" value={modalData.salary || ""} onChange={e => setModalData({ ...modalData, salary: +e.target.value })} /></div>
             <div className="form-group"><label>{T("Hire Date", "تاريخ التعيين")}</label><input type="date" value={modalData.hire_date || ""} onChange={e => setModalData({ ...modalData, hire_date: e.target.value })} /></div>
           </div>
-          <div className="form-actions">
-            <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
-            <Btn color="primary" disabled={saving || !modalData.name} onClick={async () => {
-              setSaving(true);
-              const code = "EMP" + String(employees.length + 34).padStart(3, "0");
-              await db("employees", "POST", { ...modalData, employee_code: code, avatar: (modalData.name || "").substring(0, 2).toUpperCase(), status: "active" });
-              await loadAll(); setSaving(false); closeModal();
-            }}>{saving ? <span className="spinner" /> : T("Save Employee", "حفظ الموظف")}</Btn>
+          <div className="form-group">
+            <label>{T("Employee Type", "نوع الموظف")}</label>
+            <select value={modalData.employee_type || "office"} onChange={e => setModalData({ ...modalData, employee_type: e.target.value })}>
+              <option value="office">🏢 {T("Office (WFH Saturdays)", "مكتب (عمل من المنزل السبت)")}</option>
+              <option value="warehouse">🏭 {T("Warehouse (On-site always)", "مستودع (حضور دائم)")}</option>
+              <option value="retail">🛍️ {T("Retail / Mall of Egypt", "متجر / مول مصر")}</option>
+            </select>
           </div>
         </Modal>
 
@@ -1173,23 +1302,33 @@ export default function App() {
 
             {/* Location Modal */}
             <Modal show={showLocModal} onClose={() => {}} title={T("📍 Where are you working from?", "📍 من أين تعمل؟")}>
-              <div className="info-box">{T("You are outside the office. Please select your work location to complete check-in.", "أنت خارج المكتب. يرجى تحديد موقع عملك لإتمام تسجيل الحضور.")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                {[T("Home", "المنزل"), T("Out of Office", "خارج المكتب"), T("Client Site", "موقع العميل"), T("Field Work", "عمل ميداني"), T("Other", "أخرى")].map(loc => (
+              <div className="info-box" style={{ borderColor: "var(--warn)", background: "var(--warnb)" }}>
+                ⚠️ {T("You are outside all approved work locations. Please select your location and provide a reason.", "أنت خارج جميع المواقع المعتمدة. يرجى تحديد موقعك وذكر السبب.")}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                {[T("Home", "المنزل"), T("Client Visit", "زيارة عميل"), T("Field Work", "عمل ميداني"), T("Other", "أخرى")].map(loc => (
                   <button key={loc} onClick={() => setCustomLoc(loc)}
-                    style={{ padding: "12px 20px", background: customLoc === loc ? "var(--acc)" : "transparent", border: `1px solid ${customLoc === loc ? "var(--acc)" : "var(--border)"}`, color: customLoc === loc ? "white" : "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, textAlign: "left", transition: "all 0.15s" }}>
-                    {loc}
+                    style={{ padding: "12px 16px", background: customLoc === loc ? "var(--acc)" : "transparent", border: `1px solid ${customLoc === loc ? "var(--acc)" : "var(--border)"}`, color: customLoc === loc ? "white" : "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, textAlign: "left", transition: "all 0.15s" }}>
+                    {customLoc === loc ? "✓ " : ""}{loc}
                   </button>
                 ))}
               </div>
               {customLoc === T("Other", "أخرى") && (
-                <div className="form-group"><label>{T("Specify location", "حدد الموقع")}</label><input placeholder={T("e.g. Alexandria, Client office...", "مثال: الإسكندرية، مكتب العميل...")} onChange={e => setCustomLoc(e.target.value)} /></div>
+                <div className="form-group">
+                  <label>{T("Specify location", "حدد الموقع")}</label>
+                  <input placeholder={T("e.g. Alexandria branch, client office...", "مثال: فرع الإسكندرية، مكتب العميل...")} onChange={e => setCustomLoc(e.target.value)} />
+                </div>
               )}
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label>{T("Reason for working outside office *", "سبب العمل خارج المكتب *")}</label>
+                <textarea rows={3} value={modalData.outsideReason || ""} onChange={e => setModalData({ ...modalData, outsideReason: e.target.value })} placeholder={T("Explain why you are working from this location today...", "اشرح سبب عملك من هذا الموقع اليوم...")} />
+              </div>
               <div className="form-actions">
-                <Btn color="primary" disabled={!customLoc || saving} onClick={async () => {
+                <Btn color="primary" disabled={!customLoc || !modalData.outsideReason || saving} onClick={async () => {
                   setShowLocModal(false);
-                  await doSaveClockIn(pendingTime, pendingLoc, customLoc, null);
-                  setCustomLoc("");
+                  const label = `${customLoc} — ${modalData.outsideReason}`;
+                  await doSaveClockIn(pendingTime, pendingLoc, label, photo);
+                  setCustomLoc(""); setModalData({});
                 }}>{saving ? <span className="spinner" /> : T("✅ Confirm & Clock In", "✅ تأكيد وتسجيل الدخول")}</Btn>
               </div>
             </Modal>
@@ -1755,6 +1894,7 @@ export default function App() {
     { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
     { id: "analytics", icon: "📊", label: T("Analytics", "التحليلات"), roles: ["admin","hr","accountant"] },
     { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"] },
+    { id: "shifts", icon: "🕐", label: T("Shifts", "المناوبات"), roles: ["admin","hr"] },
     { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور"), roles: ["admin","hr","accountant","employee"] },
     { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant"] },
     { id: "loans", icon: "💳", label: T("Loans", "القروض"), roles: ["admin","hr","accountant"] },
@@ -1972,7 +2112,162 @@ export default function App() {
     );
   };
 
-  const pages = { dashboard: renderDashboard, analytics: renderAnalytics, employees: renderEmployees, attendance: renderAttendance, payroll: renderPayroll, loans: renderLoans, selfservice: renderSelfService, settings: renderSettings };
+  // ============================================================
+  // SHIFTS MANAGEMENT
+  // ============================================================
+  const renderShifts = () => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const daysAr = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+
+    return (
+      <div className="fade-in">
+        <div className="card-header" style={{ marginBottom: 20 }}>
+          <div className="card-title">🕐 {T("Shift Management", "إدارة المناوبات")}</div>
+          <Btn color="primary" onClick={() => openModal("addShift", { name: "", name_ar: "", start_time: "09:00", end_time: "17:00", grace_minutes: 15, is_night_shift: false, color: "#10b981" })}>
+            ➕ {T("New Shift", "مناوبة جديدة")}
+          </Btn>
+        </div>
+
+        {/* Shifts List */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+          {shifts.map((shift, i) => (
+            <div key={i} className="card" style={{ borderLeft: `4px solid ${shift.color || "var(--acc)"}`, padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--t1)" }}>{ar ? shift.name_ar : shift.name}</div>
+                  {shift.is_night_shift && <span className="badge purple" style={{ fontSize: 11, marginTop: 4 }}>🌙 {T("Night Shift", "وردية ليلية")}</span>}
+                </div>
+                <Btn size="sm" color="outline" onClick={() => openModal("editShift", { ...shift })}>✏️</Btn>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--t2)" }}>
+                <div>🟢 {T("Start", "بداية")}: <strong style={{ color: "var(--t1)" }}>{shift.start_time}</strong></div>
+                <div>🔴 {T("End", "نهاية")}: <strong style={{ color: "var(--t1)" }}>{shift.end_time}</strong></div>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 8 }}>
+                ⏱️ {shift.grace_minutes}min {T("grace period", "فترة سماح")} · {shift.min_hours || 8}h {T("minimum", "حد أدنى")}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 4 }}>
+                👥 {employees.filter(e => empShifts.find(es => es.employee_id === e.id && es.shift_id === shift.id)).length} {T("employees assigned", "موظف معين")}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Assign Shifts to Employees */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)" }}>
+            <div className="card-title">👥 {T("Employee Shift Assignments", "تعيين المناوبات للموظفين")}</div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr>
+                <th>{T("Employee", "الموظف")}</th>
+                <th>{T("Type", "النوع")}</th>
+                <th>{T("Current Shift", "المناوبة الحالية")}</th>
+                <th>{T("Shift Times", "أوقات المناوبة")}</th>
+                <th>{T("Change Shift", "تغيير المناوبة")}</th>
+              </tr></thead>
+              <tbody>
+                {employees.filter(e => e.status === "active").map((emp, i) => {
+                  const es = empShifts.find(x => x.employee_id === emp.id);
+                  const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <div className="emp-row">
+                          <div className="emp-avatar" style={{ width: 30, height: 30, fontSize: 11 }}>{emp.avatar || "?"}</div>
+                          <div>
+                            <div style={{ color: "var(--t1)", fontWeight: 500 }}>{emp.name}</div>
+                            <div style={{ fontSize: 11, color: "var(--t3)" }}>{emp.employee_code}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${emp.employee_type === "warehouse" ? "yellow" : emp.employee_type === "retail" ? "blue" : "green"}`}>
+                          {emp.employee_type === "warehouse" ? "🏭 " + T("Warehouse", "مستودع") : emp.employee_type === "retail" ? "🛍️ " + T("Retail", "متجر") : "🏢 " + T("Office", "مكتب")}
+                        </span>
+                      </td>
+                      <td>
+                        {shift
+                          ? <span style={{ fontWeight: 600, color: shift.color || "var(--acc)" }}>{ar ? shift.name_ar : shift.name}</span>
+                          : <span style={{ color: "var(--t3)" }}>—</span>}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {shift ? `${shift.start_time} → ${shift.end_time}` : "—"}
+                      </td>
+                      <td>
+                        <select
+                          value={es?.shift_id || ""}
+                          onChange={async (e) => {
+                            const shiftId = +e.target.value;
+                            if (es) {
+                              await db("employee_shifts", "PATCH", { shift_id: shiftId }, `?id=eq.${es.id}`);
+                            } else {
+                              await db("employee_shifts", "POST", { employee_id: emp.id, shift_id: shiftId, effective_from: new Date().toISOString().split("T")[0] });
+                            }
+                            await loadAll();
+                          }}
+                          style={{ padding: "6px 10px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, minWidth: 160 }}>
+                          <option value="">{T("— Select shift —", "— اختر مناوبة —")}</option>
+                          {shifts.map(s => (
+                            <option key={s.id} value={s.id}>{ar ? s.name_ar : s.name} ({s.start_time}→{s.end_time})</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Add/Edit Shift Modal */}
+        {["addShift", "editShift"].map(mtype => (
+          <Modal key={mtype} show={activeModal === mtype} onClose={closeModal} title={mtype === "addShift" ? T("➕ New Shift", "➕ مناوبة جديدة") : T("✏️ Edit Shift", "✏️ تعديل المناوبة")}>
+            <div className="form-row">
+              <div className="form-group"><label>{T("Shift Name (English)", "اسم المناوبة بالإنجليزية")}</label><input value={modalData.name || ""} onChange={e => setModalData({ ...modalData, name: e.target.value })} placeholder="Morning Shift" /></div>
+              <div className="form-group"><label>{T("Shift Name (Arabic)", "اسم المناوبة بالعربية")}</label><input value={modalData.name_ar || ""} onChange={e => setModalData({ ...modalData, name_ar: e.target.value })} placeholder="الوردية الصباحية" /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>🟢 {T("Start Time", "وقت البداية")}</label><input type="time" value={modalData.start_time || "09:00"} onChange={e => setModalData({ ...modalData, start_time: e.target.value })} /></div>
+              <div className="form-group"><label>🔴 {T("End Time", "وقت النهاية")}</label><input type="time" value={modalData.end_time || "17:00"} onChange={e => setModalData({ ...modalData, end_time: e.target.value })} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>⏱️ {T("Grace Period (minutes)", "فترة السماح (دقيقة)")}</label><input type="number" value={modalData.grace_minutes || 15} onChange={e => setModalData({ ...modalData, grace_minutes: +e.target.value })} /></div>
+              <div className="form-group"><label>⏰ {T("Minimum Hours", "الحد الأدنى للساعات")}</label><input type="number" value={modalData.min_hours || 8} onChange={e => setModalData({ ...modalData, min_hours: +e.target.value })} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>🎨 {T("Color", "اللون")}</label>
+                <select value={modalData.color || "#10b981"} onChange={e => setModalData({ ...modalData, color: e.target.value })}>
+                  <option value="#10b981">🟢 Green (Morning)</option>
+                  <option value="#f59e0b">🟡 Yellow (Evening)</option>
+                  <option value="#6366f1">🟣 Purple (Night)</option>
+                  <option value="#3b82f6">🔵 Blue (Split)</option>
+                  <option value="#ef4444">🔴 Red (Special)</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 24 }}>
+                <input type="checkbox" id="night" checked={modalData.is_night_shift || false} onChange={e => setModalData({ ...modalData, is_night_shift: e.target.checked })} style={{ width: 18, height: 18 }} />
+                <label htmlFor="night" style={{ cursor: "pointer" }}>🌙 {T("Night shift (crosses midnight)", "وردية ليلية (تعبر منتصف الليل)")}</label>
+              </div>
+            </div>
+            <div className="form-actions">
+              <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+              <Btn color="primary" disabled={saving || !modalData.name} onClick={async () => {
+                setSaving(true);
+                if (mtype === "addShift") await db("shifts", "POST", modalData);
+                else await db("shifts", "PATCH", modalData, `?id=eq.${modalData.id}`);
+                await loadAll(); setSaving(false); closeModal();
+              }}>{saving ? <span className="spinner" /> : T("Save Shift", "حفظ المناوبة")}</Btn>
+            </div>
+          </Modal>
+        ))}
+      </div>
+    );
+  };
+
+  const pages = { dashboard: renderDashboard, analytics: renderAnalytics, employees: renderEmployees, shifts: renderShifts, attendance: renderAttendance, payroll: renderPayroll, loans: renderLoans, selfservice: renderSelfService, settings: renderSettings };
 
   return (
     <>
