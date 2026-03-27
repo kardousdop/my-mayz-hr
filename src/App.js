@@ -301,9 +301,125 @@ function Btn({ onClick, disabled, color = "outline", size = "normal", children }
 }
 
 // ============================================================
+// SIGNUP PAGE
+// ============================================================
+function SignupPage({ lang, setLang, onBack }) {
+  const [name, setName] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(null);
+  const ar = lang === "ar";
+  const T = (en, a) => ar ? a : en;
+
+  const createAccount = async () => {
+    if (!name.trim()) { setError(T("Please enter your full name.", "يرجى إدخال اسمك الكامل.")); return; }
+    if (password !== confirm) { setError(T("Passwords do not match.", "كلمتا المرور غير متطابقتين.")); return; }
+    if (password.length < 8) { setError(T("Password must be at least 8 characters.", "كلمة المرور 8 أحرف على الأقل.")); return; }
+    setError(""); setLoading(true);
+    try {
+      // Check email not already registered
+      const existing = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=id`);
+      if (existing && existing.length > 0) {
+        setError(T("This email is already registered.", "هذا البريد الإلكتروني مسجل بالفعل.")); setLoading(false); return;
+      }
+      // Get count to generate code
+      const all = await db("employees", "GET", null, "?select=id");
+      const code = "EMP" + String((all?.length || 0) + 1).padStart(3, "0");
+      // Register in Supabase Auth
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error.message || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return; }
+      // Create employee record
+      await db("employees", "POST", {
+        employee_code: code,
+        name: name.trim(),
+        name_ar: nameAr.trim() || name.trim(),
+        email,
+        status: "pending",
+        role: "employee",
+        avatar: name.trim().substring(0, 2).toUpperCase(),
+        salary: 0,
+      });
+      setSuccess({ name: name.trim(), code, email });
+    } catch(e) { setError(T("Registration failed. Please try again.", "فشل التسجيل. حاول مرة أخرى.")); }
+    setLoading(false);
+  };
+
+  if (success) return (
+    <div className={`login-page ${ar ? "rtl" : ""}`}>
+      <div className="login-card fade-in" style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+        <div className="login-logo">my<span>Mayz</span> HR</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ok)", margin: "16px 0 8px" }}>{T("Registration Successful!", "تم التسجيل بنجاح!")}</div>
+        <div className="info-box" style={{ textAlign: ar ? "right" : "left", margin: "16px 0" }}>
+          <div style={{ marginBottom: 8 }}>👤 <strong>{success.name}</strong></div>
+          <div style={{ marginBottom: 8 }}>🔑 {T("Your Employee Code", "كود موظفك")}: <strong style={{ color: "var(--acc)", fontSize: 18, letterSpacing: 2 }}>{success.code}</strong></div>
+          <div>📧 {success.email}</div>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--t2)", marginBottom: 24, lineHeight: 1.7, textAlign: ar ? "right" : "left" }}>
+          ⏳ {T("Your account is pending Admin approval. You will be able to login once activated. Please save your Employee Code above.", "حسابك في انتظار موافقة المشرف. ستتمكن من تسجيل الدخول بعد التفعيل. يرجى حفظ كود الموظف أعلاه.")}
+        </div>
+        <button className="login-btn" onClick={onBack}>{T("← Back to Login", "← العودة لتسجيل الدخول")}</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`login-page ${ar ? "rtl" : ""}`}>
+      <div className="login-card fade-in">
+        <button onClick={onBack} style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 13, fontFamily: "inherit", marginBottom: 16, display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
+          ← {T("Back", "رجوع")}
+        </button>
+        <div className="login-logo">my<span>Mayz</span> HR</div>
+        <div className="login-tagline">✨ {T("Create Your Account", "إنشاء حسابك")}</div>
+        <div className="info-box" style={{ marginBottom: 16 }}>
+          💡 {T("Fill in your details below. Your Employee Code will be automatically generated and shown to you after registration.", "أدخل بياناتك أدناه. سيتم إنشاء كود الموظف تلقائياً وعرضه لك بعد التسجيل.")}
+        </div>
+        {error && <div className="login-error">{error}</div>}
+        <div className="login-field">
+          <label>{T("Full Name (English) *", "الاسم الكامل بالإنجليزية *")}</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Ahmed Mohamed" />
+        </div>
+        <div className="login-field">
+          <label>{T("Full Name (Arabic)", "الاسم الكامل بالعربية")}</label>
+          <input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder="أحمد محمد" />
+        </div>
+        <div className="login-field">
+          <label>{T("Email *", "البريد الإلكتروني *")}</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ahmed@company.com" />
+        </div>
+        <div className="login-field">
+          <label>{T("Password (min 8 characters) *", "كلمة المرور (8 أحرف على الأقل) *")}</label>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+        </div>
+        <div className="login-field">
+          <label>{T("Confirm Password *", "تأكيد كلمة المرور *")}</label>
+          <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && createAccount()} />
+        </div>
+        <button className="login-btn" onClick={createAccount} disabled={loading || !name || !email || !password || !confirm}>
+          {loading ? <><span className="spinner" />{T("Creating account...", "جاري إنشاء الحساب...")}</> : T("Create Account →", "إنشاء الحساب ←")}
+        </button>
+        <div className="login-lang" style={{ marginTop: 20 }}>
+          <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>English</button>
+          <button className={lang === "ar" ? "active" : ""} onClick={() => setLang("ar")}>العربية</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // PORTAL SELECTOR
 // ============================================================
-function PortalSelector({ lang, setLang, onSelect }) {
+function PortalSelector({ lang, setLang, onSelect, onSignup }) {
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
   const portals = [
@@ -333,7 +449,18 @@ function PortalSelector({ lang, setLang, onSelect }) {
             </button>
           ))}
         </div>
-        <div className="login-lang" style={{ marginTop: 20 }}>
+        {/* Signup Link */}
+        <div style={{ marginTop: 20, padding: "14px 18px", background: "var(--bg2)", border: "1px dashed var(--border)", borderRadius: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--t2)", marginBottom: 8 }}>
+            {T("New employee? Register with your employee code", "موظف جديد؟ سجّل بكود الموظف الخاص بك")}
+          </div>
+          <button onClick={onSignup} style={{ background: "var(--accg)", border: "1px solid var(--acc)", color: "var(--acc)", padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, transition: "all 0.2s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--acc)"; e.currentTarget.style.color = "white"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "var(--accg)"; e.currentTarget.style.color = "var(--acc)"; }}>
+            ✨ {T("Create Account", "إنشاء حساب جديد")}
+          </button>
+        </div>
+        <div className="login-lang" style={{ marginTop: 16 }}>
           <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>English</button>
           <button className={lang === "ar" ? "active" : ""} onClick={() => setLang("ar")}>العربية</button>
         </div>
@@ -725,6 +852,67 @@ export default function App() {
           <Btn color="primary" onClick={() => openModal("addEmployee")}>➕ {T("Add Employee", "إضافة موظف")}</Btn>
         </div>
 
+        {/* Pending Activation Banner */}
+        {employees.filter(e => e.status === "pending").length > 0 && (
+          <div style={{ background: "var(--warnb)", border: "1px solid var(--warn)", borderRadius: 10, padding: "14px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 20 }}>⏳</span>
+            <div>
+              <div style={{ fontWeight: 600, color: "var(--warn)" }}>{employees.filter(e => e.status === "pending").length} {T("employee(s) waiting for activation", "موظف ينتظر التفعيل")}</div>
+              <div style={{ fontSize: 12, color: "var(--t2)" }}>{T("Review and assign roles in the table below", "راجع وعيّن الأدوار في الجدول أدناه")}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Employees */}
+        {employees.filter(e => e.status === "pending").length > 0 && (
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20, border: "1px solid var(--warn)" }}>
+            <div style={{ padding: "12px 24px", background: "var(--warnb)", borderBottom: "1px solid var(--warn)" }}>
+              <div className="card-title" style={{ color: "var(--warn)" }}>⏳ {T("Pending Activation", "في انتظار التفعيل")}</div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <thead><tr>
+                  <th>{T("Code", "الكود")}</th><th>{T("Name", "الاسم")}</th><th>{T("Email", "البريد")}</th>
+                  <th>{T("Department", "القسم")}</th><th>{T("Assign Role", "تعيين الدور")}</th><th>{T("Actions", "إجراءات")}</th>
+                </tr></thead>
+                <tbody>
+                  {employees.filter(e => e.status === "pending").map((emp, i) => (
+                    <tr key={i}>
+                      <td style={{ color: "var(--acc)", fontWeight: 600 }}>{emp.employee_code}</td>
+                      <td style={{ color: "var(--t1)", fontWeight: 500 }}>{emp.name}</td>
+                      <td style={{ fontSize: 12 }}>{emp.email}</td>
+                      <td>{emp.department}</td>
+                      <td>
+                        <select defaultValue="employee" id={`role_${emp.id}`}
+                          style={{ padding: "6px 10px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13 }}>
+                          <option value="employee">🙋 {T("Employee", "موظف")}</option>
+                          <option value="hr">👥 HR</option>
+                          <option value="accountant">💰 {T("Accountant", "محاسب")}</option>
+                          <option value="admin">🛡️ Admin</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <Btn size="sm" color="success" onClick={async () => {
+                            const sel = document.getElementById(`role_${emp.id}`);
+                            const newRole = sel ? sel.value : "employee";
+                            await db("employees", "PATCH", { status: "active", role: newRole }, `?id=eq.${emp.id}`);
+                            await loadAll();
+                          }}>✅ {T("Activate", "تفعيل")}</Btn>
+                          <Btn size="sm" color="danger" onClick={async () => {
+                            await db("employees", "PATCH", { status: "inactive", email: "" }, `?id=eq.${emp.id}`);
+                            await loadAll();
+                          }}>❌ {T("Reject", "رفض")}</Btn>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table>
@@ -734,6 +922,7 @@ export default function App() {
                 <th>{T("Department", "القسم")}</th>
                 <th>{T("Position", "المنصب")}</th>
                 <th>{T("Salary", "الراتب")}</th>
+                <th>{T("Role", "الدور")}</th>
                 <th>{T("Status", "الحالة")}</th>
                 <th>{T("Actions", "إجراءات")}</th>
               </tr></thead>
@@ -756,7 +945,8 @@ export default function App() {
                       <td>{emp.department || "—"}</td>
                       <td>{emp.position || "—"}</td>
                       <td style={{ color: "var(--ok)", fontWeight: 600 }}>{Number(emp.salary || 0).toLocaleString()} EGP</td>
-                      <td><span className={`badge ${emp.status === "active" ? "green" : "red"}`}>{emp.status}</span></td>
+                      <td><span className={`badge ${emp.role === "admin" ? "purple" : emp.role === "hr" ? "green" : emp.role === "accountant" ? "yellow" : "blue"}`}>{emp.role || "employee"}</span></td>
+                      <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
                       <td>
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="sm" color="outline" onClick={() => openModal("editEmployee", { ...emp })}>✏️ {T("Edit", "تعديل")}</Btn>
@@ -1544,12 +1734,16 @@ export default function App() {
   // ============================================================
   // LAYOUT
   // ============================================================
+  const [signup, setSignup] = useState(false);
+
   if (!loggedIn) return (
     <>
       <style>{css}</style>
-      {!portal
-        ? <PortalSelector lang={lang} setLang={setLang} onSelect={setPortal} />
-        : <LoginPage lang={lang} setLang={setLang} role={portal} onLogin={handleLogin} onBack={() => setPortal(null)} />
+      {signup
+        ? <SignupPage lang={lang} setLang={setLang} onBack={() => setSignup(false)} onSuccess={() => setSignup(false)} />
+        : !portal
+          ? <PortalSelector lang={lang} setLang={setLang} onSelect={setPortal} onSignup={() => setSignup(true)} />
+          : <LoginPage lang={lang} setLang={setLang} role={portal} onLogin={handleLogin} onBack={() => setPortal(null)} />
       }
     </>
   );
