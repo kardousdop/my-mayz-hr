@@ -1763,7 +1763,7 @@ export default function App() {
                   }
 
                   // Create employee record
-                  await db("employees", "POST", {
+                  const empResult = await db("employees", "POST", {
                     employee_code: code,
                     name: modalData.name.trim(),
                     name_ar: modalData.name_ar || modalData.name.trim(),
@@ -1777,8 +1777,12 @@ export default function App() {
                     employee_type: modalData.employee_type || "office",
                     status: "active",
                     avatar: modalData.name.trim().substring(0,2).toUpperCase(),
-                    temp_password: modalData.password,
                   });
+
+                  if (!empResult) {
+                    alert(T("❌ Failed to save employee. Check Supabase RLS policies — run: ALTER TABLE employees DISABLE ROW LEVEL SECURITY;", "❌ فشل حفظ الموظف. تحقق من صلاحيات Supabase."));
+                    setSaving(false); return;
+                  }
 
                   await loadAll(); setSaving(false); closeModal();
                   alert(T(`✅ Employee created!\nCode: ${code}\nEmail: ${modalData.email}\nPassword: ${modalData.password}\n\nShare these credentials with the employee.`,
