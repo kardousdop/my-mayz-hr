@@ -2832,9 +2832,12 @@ export default function App() {
           {(notifSettings.recipients || []).map((r, i) => (
             <div key={i} style={{ background: r.active ? "var(--bg2)" : "var(--card)", border: `1px solid ${r.active ? "var(--border)" : "var(--border)"}`, borderRadius: 10, padding: 14, marginBottom: 10, opacity: r.active ? 1 : 0.5 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div>
-                  <span style={{ fontWeight: 700, color: "var(--t1)", fontSize: 14 }}>{r.name}</span>
-                  <span className="badge blue" style={{ fontSize: 10, marginLeft: 8 }}>{r.role}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+                  <input value={r.name || ""} onChange={e => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, name: e.target.value }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}
+                    style={{ fontWeight: 700, fontSize: 14, color: "var(--t1)", background: "transparent", border: "none", borderBottom: "1px dashed var(--border)", outline: "none", fontFamily: "inherit", width: 140, padding: "2px 4px" }} />
+                  <input value={r.role || ""} onChange={e => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, role: e.target.value }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}
+                    style={{ fontSize: 11, color: "var(--info)", background: "var(--infob)", border: "1px solid var(--info)", borderRadius: 20, outline: "none", fontFamily: "inherit", padding: "2px 8px", width: 90, textAlign: "center" }} />
+                  <Btn size="sm" color="danger" onClick={() => { if(window.confirm(T("Remove this recipient?","حذف هذا المستلم?"))) { const recs = notifSettings.recipients.filter((_,j) => j !== i); saveNotifSettings({ ...notifSettings, recipients: recs }); } }}>🗑️</Btn>
                 </div>
                 <div style={{ width: 36, height: 20, background: r.active ? "var(--ok)" : "var(--border)", borderRadius: 10, position: "relative", cursor: "pointer", transition: "all 0.2s", flexShrink: 0 }}
                   onClick={() => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, active: !r.active }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}>
