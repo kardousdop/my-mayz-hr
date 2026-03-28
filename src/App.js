@@ -500,6 +500,27 @@ function SignupPage({ lang, setLang, onBack }) {
         avatar: name.trim().substring(0, 2).toUpperCase(),
         salary: 0,
       });
+
+      // Notify admin via WhatsApp + Email
+      try {
+        const notifSettings = JSON.parse(localStorage.getItem("mymayz_notif") || "{}");
+        const msg = `🆕 New employee registered and waiting for approval!\nName: ${name.trim()}\nEmail: ${email}\nCode: ${code}\nGo to Employees page to activate.`;
+        if (notifSettings.enabled !== false) {
+          (notifSettings.recipients || []).filter(r => r.active && r.role === "Admin").forEach(r => {
+            if (r.whatsapp && r.whatsappKey) {
+              fetch(`https://api.callmebot.com/whatsapp.php?phone=${r.whatsapp}&text=${encodeURIComponent(msg)}&apikey=${r.whatsappKey}`).catch(()=>{});
+            }
+            if (r.email && notifSettings.brevoKey) {
+              fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "api-key": notifSettings.brevoKey },
+                body: JSON.stringify({ sender: { name: "myMayz HR", email: "hello@mymayz.com" }, to: [{ email: r.email, name: r.name }], subject: "🆕 New Employee Registration — Action Required", htmlContent: `<div style="font-family:Arial,sans-serif;padding:24px"><h2>New Employee Registration</h2><p><b>Name:</b> ${name.trim()}</p><p><b>Email:</b> ${email}</p><p><b>Code:</b> ${code}</p><p>Please go to the <b>Employees</b> page to approve and activate this account.</p></div>` })
+              }).catch(()=>{});
+            }
+          });
+        }
+      } catch(e) {}
+
       setSuccess({ name: name.trim(), code, email });
     } catch(e) { setError(T("Registration failed. Please try again.", "فشل التسجيل. حاول مرة أخرى.")); }
     setLoading(false);
@@ -1100,7 +1121,8 @@ export default function App() {
       // Check if today is an off day for this shift
       const todayDay = clockTime.getDay();
       const shiftOffDays = (() => { try { return JSON.parse(shift?.off_days || "[]"); } catch { return []; } })();
-      if (shiftOffDays.includes(todayDay)) return "present"; // off day — count as present, no late
+      if (shiftOffDays.includes(todayDay)) return "present"; // off day — no late
+      if (shift?.is_flexible) return "present"; // flexible shift — no late marking
       return getShiftStatus(shift, clockTime);
     })();
     const day = clockTime.getDay();
@@ -3276,12 +3298,13 @@ export default function App() {
   );
 
   const pendingBadge = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length + loans.filter(l => l.status === "pending").length;
+  const pendingEmployees = employees.filter(e => e.status === "pending").length;
 
   // Role-based navigation
   const allNavItems = [
     { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
     { id: "analytics", icon: "📊", label: T("Analytics", "التحليلات"), roles: ["admin","hr","accountant"] },
-    { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"] },
+    { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"], badge: pendingEmployees || null },
     { id: "shifts", icon: "🕐", label: T("Shifts", "المناوبات"), roles: ["admin","hr"] },
     { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور"), roles: ["admin","hr","accountant","employee"] },
     { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant","employee"] },
@@ -3583,6 +3606,7 @@ export default function App() {
                 const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
                 return <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 3 }}>🏖️ {T("Off:","راحة:")} {od.map(d => dayNames[d]).join(", ")}</div>;
               })()}
+              {shift.is_flexible && <div style={{ fontSize: 11, color: "var(--acc)", marginTop: 3 }}>🕐 {T("Flexible time — no late marking","وقت مرن — لا تأخير")}</div>}
               <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 4 }}>
                 👥 {employees.filter(e => empShifts.find(es => es.employee_id === e.id && es.shift_id === shift.id)).length} {T("employees assigned", "موظف معين")}
               </div>
@@ -3690,7 +3714,23 @@ export default function App() {
               </div>
             </div>
 
-            {/* Off Days */}
+            {/* Flexible time toggle */}
+            <div className="form-group">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: modalData.is_flexible ? "var(--accg)" : "var(--bg2)", border: `2px solid ${modalData.is_flexible ? "var(--acc)" : "var(--border)"}`, borderRadius: 10, cursor: "pointer", transition: "all 0.15s" }}
+                onClick={() => setModalData({ ...modalData, is_flexible: !modalData.is_flexible })}>
+                <div style={{ width: 44, height: 24, background: modalData.is_flexible ? "var(--acc)" : "var(--border)", borderRadius: 12, position: "relative", transition: "all 0.2s", flexShrink: 0 }}>
+                  <div style={{ width: 18, height: 18, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: modalData.is_flexible ? 23 : 3, transition: "all 0.2s" }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: modalData.is_flexible ? "var(--acc)" : "var(--t1)" }}>
+                    🕐 {T("Flexible Time Shift", "وردية بوقت مرن")}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 2 }}>
+                    {T("No fixed sign-in time — employees can arrive any time. Only minimum hours are tracked. No late marking.", "لا وقت دخول محدد — الموظفون يصلون في أي وقت. يُتتبع فقط الحد الأدنى للساعات. لا تأخير.")}
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="form-group">
               <label>🗓️ {T("Days Off — no attendance required on these days", "أيام الراحة — لا يشترط حضور في هذه الأيام")}</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
