@@ -681,7 +681,8 @@ export default function App() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
-  const [reportFilter, setReportFilter] = useState({ from: "", to: "", emp: "", status: "" });
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [reportFilter, setReportFilter] = useState({ from: todayStr, to: todayStr, emp: "", status: "", sort: "desc", month: "" });
   const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
   const [empShifts, setEmpShifts] = useState([]);
   const [clockOutGpsOk, setClockOutGpsOk] = useState(false);
@@ -992,7 +993,9 @@ export default function App() {
   // ============================================================
   const renderDashboard = () => {
     const today = new Date().toISOString().split("T")[0];
-    const todayAtt = attendance.filter(a => a.date === today);
+    const todayAtt = attendance
+      .filter(a => a.date === today)
+      .sort((a, b) => new Date(b.check_in || 0) - new Date(a.check_in || 0));
     const pending = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length;
     const totalPayroll = employees.reduce((s, e) => s + (Number(e.salary) || 0), 0);
 
@@ -1495,11 +1498,20 @@ export default function App() {
     const filtered = attendance.filter(a => {
       // Employees only see their own records
       if (role === "employee" && a.employee_id !== currentEmployee?.id) return false;
-      if (reportFilter.from && a.date < reportFilter.from) return false;
-      if (reportFilter.to && a.date > reportFilter.to) return false;
+      // Month quick filter (YYYY-MM format)
+      if (reportFilter.month) {
+        if (!a.date?.startsWith(reportFilter.month)) return false;
+      } else {
+        if (reportFilter.from && a.date < reportFilter.from) return false;
+        if (reportFilter.to && a.date > reportFilter.to) return false;
+      }
       if (reportFilter.emp && a.employee_id !== Number(reportFilter.emp)) return false;
       if (reportFilter.status && a.status !== reportFilter.status) return false;
       return true;
+    }).sort((a, b) => {
+      const ta = new Date(a.check_in || a.date + "T00:00:00").getTime();
+      const tb = new Date(b.check_in || b.date + "T00:00:00").getTime();
+      return reportFilter.sort === "asc" ? ta - tb : tb - ta;
     });
 
     const stats = {
@@ -1727,36 +1739,86 @@ export default function App() {
 
             {/* Filters */}
             <div className="card">
-              <div className="card-title" style={{ marginBottom: 16 }}>🔍 {T("Filter Reports", "تصفية التقارير")}</div>
-              {/* Quick filters */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                <div className="card-title">🔍 {T("Filter Reports", "تصفية التقارير")}</div>
+                {/* Sort toggle */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    { val: "desc", label: "🔽 " + T("Newest First", "الأحدث أولاً") },
+                    { val: "asc",  label: "🔼 " + T("Oldest First", "الأقدم أولاً") },
+                  ].map(s => (
+                    <button key={s.val} onClick={() => setReportFilter({ ...reportFilter, sort: s.val })}
+                      style={{ padding: "6px 12px", background: reportFilter.sort === s.val ? "var(--acc)" : "var(--bg2)", border: `1px solid ${reportFilter.sort === s.val ? "var(--acc)" : "var(--border)"}`, color: reportFilter.sort === s.val ? "white" : "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, transition: "all 0.15s" }}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status quick filters */}
               <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                 {[
                   { label: T("All", "الكل"), status: "" },
                   { label: T("⚠️ Late", "⚠️ متأخر"), status: "late" },
-                  { label: T("❌ Incomplete Shift", "❌ وردية ناقصة"), status: "incomplete" },
+                  { label: T("❌ Incomplete", "❌ ناقصة"), status: "incomplete" },
                   { label: T("✅ Present", "✅ حاضر"), status: "present" },
                   { label: T("🔴 Absent", "🔴 غائب"), status: "absent" },
                 ].map(f => (
                   <button key={f.status} onClick={() => setReportFilter({ ...reportFilter, status: f.status })}
                     style={{ padding: "6px 14px", background: reportFilter.status === f.status ? "var(--acc)" : "var(--bg2)", border: `1px solid ${reportFilter.status === f.status ? "var(--acc)" : "var(--border)"}`, color: reportFilter.status === f.status ? "white" : "var(--t2)", borderRadius: 20, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, transition: "all 0.15s" }}>
-                    {f.label} {f.status ? `(${attendance.filter(a => a.status === f.status).length})` : `(${attendance.length})`}
+                    {f.label} ({attendance.filter(a => f.status ? a.status === f.status : true).length})
                   </button>
                 ))}
               </div>
-              <div className="form-row">
-                <div className="form-group"><label>{T("From Date", "من تاريخ")}</label><input type="date" value={reportFilter.from} onChange={e => setReportFilter({ ...reportFilter, from: e.target.value })} /></div>
-                <div className="form-group"><label>{T("To Date", "إلى تاريخ")}</label><input type="date" value={reportFilter.to} onChange={e => setReportFilter({ ...reportFilter, to: e.target.value })} /></div>
+
+              {/* Month quick select */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, color: "var(--t3)", display: "block", marginBottom: 6 }}>📅 {T("Quick Month", "اختر شهراً")}</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[
+                    { label: T("Today", "اليوم"), action: () => setReportFilter({ ...reportFilter, month: "", from: todayStr, to: todayStr }) },
+                    { label: T("This Month", "هذا الشهر"), action: () => setReportFilter({ ...reportFilter, month: new Date().toISOString().slice(0,7), from: "", to: "" }) },
+                    { label: T("Last Month", "الشهر الماضي"), action: () => { const d = new Date(); d.setMonth(d.getMonth()-1); setReportFilter({ ...reportFilter, month: d.toISOString().slice(0,7), from: "", to: "" }); } },
+                    { label: T("All Time", "كل الوقت"), action: () => setReportFilter({ ...reportFilter, month: "", from: "", to: "" }) },
+                  ].map((q, i) => (
+                    <button key={i} onClick={q.action}
+                      style={{ padding: "5px 12px", background: "var(--bg2)", border: "1px solid var(--border)", color: "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, transition: "all 0.15s" }}
+                      onMouseOver={e => { e.target.style.borderColor = "var(--acc)"; e.target.style.color = "var(--acc)"; }}
+                      onMouseOut={e => { e.target.style.borderColor = "var(--border)"; e.target.style.color = "var(--t2)"; }}>
+                      {q.label}
+                    </button>
+                  ))}
+                  {/* Month picker */}
+                  <input type="month" value={reportFilter.month || ""}
+                    onChange={e => setReportFilter({ ...reportFilter, month: e.target.value, from: "", to: "" })}
+                    style={{ padding: "5px 10px", background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8, color: "#1a2035", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }} />
+                </div>
               </div>
-              {(role === "admin" || role === "hr" || role === "accountant") && (
+
+              {/* Date range */}
+              <div className="form-row" style={{ marginBottom: 12 }}>
                 <div className="form-group">
-                  <label>{T("Employee", "الموظف")}</label>
+                  <label style={{ fontSize: 12 }}>{T("From Date", "من تاريخ")}</label>
+                  <input type="date" value={reportFilter.from} onChange={e => setReportFilter({ ...reportFilter, from: e.target.value, month: "" })}
+                    style={{ background: "#ffffff", color: "#1a2035", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontFamily: "inherit", fontSize: 13, width: "100%" }} />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: 12 }}>{T("To Date", "إلى تاريخ")}</label>
+                  <input type="date" value={reportFilter.to} onChange={e => setReportFilter({ ...reportFilter, to: e.target.value, month: "" })}
+                    style={{ background: "#ffffff", color: "#1a2035", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontFamily: "inherit", fontSize: 13, width: "100%" }} />
+                </div>
+              </div>
+
+              {(role === "admin" || role === "hr" || role === "accountant") && (
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12 }}>{T("Employee", "الموظف")}</label>
                   <select value={reportFilter.emp} onChange={e => setReportFilter({ ...reportFilter, emp: e.target.value })}>
                     <option value="">{T("All Employees", "جميع الموظفين")}</option>
-                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
                   </select>
                 </div>
               )}
-              <Btn color="outline" size="sm" onClick={() => setReportFilter({ from: "", to: "", emp: "", status: "" })}>🗑️ {T("Clear Filters", "مسح التصفية")}</Btn>
+              <Btn color="outline" size="sm" onClick={() => setReportFilter({ from: todayStr, to: todayStr, emp: "", status: "", sort: "desc", month: "" })}>🔄 {T("Reset to Today", "إعادة ضبط لليوم")}</Btn>
             </div>
 
             {/* Attendance Table */}
@@ -2792,22 +2854,48 @@ export default function App() {
 
         {/* Employee Performance Table */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)" }}>
-            <div className="card-title">👤 {T("Employee Attendance Performance (Last 30 Days)", "أداء حضور الموظفين (آخر 30 يوم)")}</div>
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div className="card-title">👤 {T("Employee Attendance Performance", "أداء حضور الموظفين")}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {/* Month picker */}
+              <input type="month" defaultValue={new Date().toISOString().slice(0,7)}
+                onChange={e => {
+                  const val = e.target.value;
+                  // Update last30 filter based on selected month
+                  const d = new Date(val + "-01");
+                  const last = new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().split("T")[0];
+                  const first = val + "-01";
+                  e.target.dataset.from = first;
+                  e.target.dataset.to = last;
+                  // Store in a ref-like way via data attributes
+                  document.getElementById("perfMonthFrom").value = first;
+                  document.getElementById("perfMonthTo").value = last;
+                }}
+                style={{ padding: "5px 10px", background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8, color: "#1a2035", fontFamily: "inherit", fontSize: 12 }} />
+              {/* Hidden inputs to store date range */}
+              <input type="hidden" id="perfMonthFrom" defaultValue={new Date().toISOString().slice(0,8)+"01"} />
+              <input type="hidden" id="perfMonthTo" defaultValue={new Date().toISOString().split("T")[0]} />
+            </div>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table>
               <thead><tr>
-                <th>{T("Employee", "الموظف")}</th>
-                <th>{T("Department", "القسم")}</th>
-                <th>{T("Present Days", "أيام حضور")}</th>
-                <th>{T("Late Days", "أيام تأخير")}</th>
-                <th>{T("Absent Days", "أيام غياب")}</th>
-                <th>{T("Total Hours", "إجمالي الساعات")}</th>
-                <th>{T("Attendance Rate", "نسبة الحضور")}</th>
+                {[
+                  { key: "name", label: T("Employee", "الموظف") },
+                  { key: "dept", label: T("Department", "القسم") },
+                  { key: "present", label: T("Present", "حضور") },
+                  { key: "late", label: T("Late", "تأخير") },
+                  { key: "absent", label: T("Absent", "غياب") },
+                  { key: "hours", label: T("Hours", "ساعات") },
+                  { key: "rate", label: T("Rate", "النسبة") },
+                ].map(col => (
+                  <th key={col.key} style={{ cursor: "pointer", userSelect: "none" }}>
+                    {col.label}
+                  </th>
+                ))}
               </tr></thead>
               <tbody>
-                {empAttRate.map((emp, i) => (
+                {empAttRate.sort((a, b) => b.rate - a.rate).map((emp, i) => (
                   <tr key={i}>
                     <td><div className="emp-row"><div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{emp.avatar || "?"}</div><span style={{ color: "var(--t1)", fontWeight: 500 }}>{emp.name}</span></div></td>
                     <td>{emp.department || "—"}</td>
