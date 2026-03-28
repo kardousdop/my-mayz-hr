@@ -1071,6 +1071,10 @@ export default function App() {
     const status = (() => {
       const empShift = empShifts.find(es => es.employee_id === (currentEmployee?.id || employees[0]?.id));
       const shift = empShift ? shifts.find(s => s.id === empShift.shift_id) : shifts[0];
+      // Check if today is an off day for this shift
+      const todayDay = clockTime.getDay();
+      const shiftOffDays = (() => { try { return JSON.parse(shift?.off_days || "[]"); } catch { return []; } })();
+      if (shiftOffDays.includes(todayDay)) return "present"; // off day — count as present, no late
       return getShiftStatus(shift, clockTime);
     })();
     const day = clockTime.getDay();
@@ -2818,7 +2822,11 @@ export default function App() {
                   shiftActive = nowMin >= startMin && nowMin <= endMin;
                 }
 
-                return { emp, att, lastAtt, shift, shiftActive, shiftLabel,
+                const shiftOffDays = (() => { try { return JSON.parse(shift?.off_days || "[]"); } catch { return []; } })();
+                const todayDayNum = now2.getDay();
+                const isOffDay = shiftOffDays.includes(todayDayNum);
+
+                return { emp, att, lastAtt, shift, shiftActive: shiftActive && !isOffDay, shiftLabel, isOffDay,
                   isSignedIn: !!att,
                   signInTime: att ? new Date(att.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : null,
                   signOutTime: lastAtt?.check_out ? new Date(lastAtt.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : null,
@@ -2827,8 +2835,9 @@ export default function App() {
               });
 
               const signedIn = empStatus.filter(e => e.isSignedIn);
-              const inShiftNotSignedIn = empStatus.filter(e => !e.isSignedIn && e.shiftActive);
-              const outOfShift = empStatus.filter(e => !e.isSignedIn && !e.shiftActive);
+              const inShiftNotSignedIn = empStatus.filter(e => !e.isSignedIn && e.shiftActive && !e.isOffDay);
+              const onOffDay = empStatus.filter(e => !e.isSignedIn && e.isOffDay);
+              const outOfShift = empStatus.filter(e => !e.isSignedIn && !e.shiftActive && !e.isOffDay);
 
               return (
                 <>
@@ -2837,7 +2846,7 @@ export default function App() {
                     {[
                       { label: T("Currently Working","يعملون الآن"), value: signedIn.length, color: "green", icon: "🟢" },
                       { label: T("Absent in Shift","غائبون في وقت العمل"), value: inShiftNotSignedIn.length, color: "red", icon: "🔴" },
-                      { label: T("Off Shift","خارج الوردية"), value: outOfShift.length, color: "yellow", icon: "⚪" },
+                      { label: T("Day Off Today","يوم راحة اليوم"), value: onOffDay.length, color: "yellow", icon: "🏖️" },
                       { label: T("Total Active Staff","إجمالي الموظفين"), value: empStatus.length, color: "blue", icon: "👥" },
                     ].map((s,i) => (
                       <div key={i} className="stat-card">
@@ -2884,6 +2893,25 @@ export default function App() {
                               <div style={{ fontSize: 12, color: "var(--t3)" }}>{e.shiftLabel}</div>
                             </div>
                             <span className="badge red">⚠️ {T("Absent","غائب")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Day Off employees */}
+                  {onOffDay.length > 0 && (
+                    <div className="card" style={{ marginBottom: 16 }}>
+                      <div className="card-title" style={{ marginBottom: 16, color: "var(--warn)" }}>🏖️ {T("Day Off Today","يوم راحة اليوم")} ({onOffDay.length})</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {onOffDay.map((e,i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--warnb)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10 }}>
+                            <div className="emp-avatar">{e.emp.avatar || e.emp.name?.substring(0,2)}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, color: "var(--t1)", fontSize: 14 }}>{e.emp.name}</div>
+                              <div style={{ fontSize: 12, color: "var(--t3)" }}>{e.shiftLabel}</div>
+                            </div>
+                            <span className="badge yellow">🏖️ {T("Off Today","يوم راحة")}</span>
                           </div>
                         ))}
                       </div>
@@ -3437,6 +3465,12 @@ export default function App() {
               <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 8 }}>
                 ⏱️ {shift.grace_minutes}min {T("grace period", "فترة سماح")} · {shift.min_hours || 8}h {T("minimum", "حد أدنى")}
               </div>
+              {(() => {
+                const od = (() => { try { return JSON.parse(shift.off_days || "[]"); } catch { return []; } })();
+                if (!od.length) return null;
+                const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                return <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 3 }}>🏖️ {T("Off:","راحة:")} {od.map(d => dayNames[d]).join(", ")}</div>;
+              })()}
               <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 4 }}>
                 👥 {employees.filter(e => empShifts.find(es => es.employee_id === e.id && es.shift_id === shift.id)).length} {T("employees assigned", "موظف معين")}
               </div>
@@ -3543,6 +3577,30 @@ export default function App() {
                 <label htmlFor="night" style={{ cursor: "pointer" }}>🌙 {T("Night shift (crosses midnight)", "وردية ليلية (تعبر منتصف الليل)")}</label>
               </div>
             </div>
+
+            {/* Off Days */}
+            <div className="form-group">
+              <label>🗓️ {T("Days Off — no attendance required on these days", "أيام الراحة — لا يشترط حضور في هذه الأيام")}</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {[{day:0,en:"Sun",ar:"أحد"},{day:1,en:"Mon",ar:"اثنين"},{day:2,en:"Tue",ar:"ثلاثاء"},{day:3,en:"Wed",ar:"أربعاء"},{day:4,en:"Thu",ar:"خميس"},{day:5,en:"Fri",ar:"جمعة"},{day:6,en:"Sat",ar:"سبت"}].map(({ day, en, ar: ar2 }) => {
+                  const offDays = (() => { try { return JSON.parse(modalData.off_days || "[]"); } catch { return []; } })();
+                  const isOff = offDays.includes(day);
+                  return (
+                    <div key={day} onClick={() => {
+                      const cur = (() => { try { return JSON.parse(modalData.off_days || "[]"); } catch { return []; } })();
+                      const upd = isOff ? cur.filter(d => d !== day) : [...cur, day];
+                      setModalData({ ...modalData, off_days: JSON.stringify(upd) });
+                    }} style={{ padding: "7px 14px", borderRadius: 20, background: isOff ? "var(--errb)" : "var(--bg2)", border: `2px solid ${isOff ? "var(--err)" : "var(--border)"}`, color: isOff ? "var(--err)" : "var(--t3)", cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.15s", userSelect: "none" }}>
+                      {isOff ? "🔴" : "🟢"} {ar ? ar2 : en}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 6 }}>
+                🔴 {T("= Day off. Employees will NOT be marked absent or late on these days.", "= يوم راحة. لن يُسجَّل غياب أو تأخير في هذه الأيام.")}
+              </div>
+            </div>
+
             <div className="form-actions">
               <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
               <Btn color="primary" disabled={saving || !modalData.name} onClick={async () => {
