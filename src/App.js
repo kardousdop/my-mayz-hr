@@ -1397,7 +1397,10 @@ export default function App() {
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <Btn size="sm" color="outline" onClick={() => openModal("editEmployee", { ...emp })}>✏️ {T("Edit", "تعديل")}</Btn>
+                          <Btn size="sm" color="outline" onClick={() => {
+                            const es = empShifts.find(x => x.employee_id === emp.id);
+                            openModal("editEmployee", { ...emp, assigned_shift_id: es ? String(es.shift_id) : "" });
+                          }}>✏️ {T("Edit", "تعديل")}</Btn>
                           <Btn size="sm" color="success" onClick={() => openModal("editSalary", { ...emp, base_salary: emp.salary, allowances: emp.allowances || 0, bonuses: emp.bonuses || 0, deductions: emp.deductions || 0, tax: emp.tax || 0, insurance: emp.insurance || 0 })}>💰 {T("Salary", "الراتب")}</Btn>
                           <Btn size="sm" color="danger" onClick={async () => {
                             if (window.confirm(T(`Delete ${emp.name}? This cannot be undone.`, `حذف ${emp.name}؟ لا يمكن التراجع.`))) {
@@ -1545,12 +1548,13 @@ export default function App() {
           <div className="form-group">
             <label>🕐 {T("Assigned Shift", "المناوبة المعينة")}</label>
             <select
-              value={modalData.assigned_shift_id || empShifts.find(es => es.employee_id === modalData.id)?.shift_id || ""}
+              value={String(modalData.assigned_shift_id ?? empShifts.find(es => es.employee_id === modalData.id)?.shift_id ?? "")}
               onChange={e => setModalData({ ...modalData, assigned_shift_id: e.target.value })}>
               <option value="">{T("No shift assigned", "بدون مناوبة")}</option>
               {shifts.map(s => (
-                <option key={s.id} value={s.id}>
-                  {ar ? s.name_ar : s.name} ({s.start_time} → {s.end_time})
+                <option key={s.id} value={String(s.id)}>
+                  {ar ? (s.name_ar || s.name) : s.name} ({s.start_time} → {s.end_time})
+                  {(() => { try { const od = JSON.parse(s.off_days||"[]"); if(od.length) return ` 🏖️ off: ${od.map(d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d]).join(",")}` } catch{} return ""; })()}
                 </option>
               ))}
             </select>
