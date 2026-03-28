@@ -1752,8 +1752,10 @@ export default function App() {
                     <th>{T("Location", "الموقع")}</th>
                     <th>{T("In GPS", "GPS دخول")}</th>
                     <th>{T("Status", "الحالة")}</th>
+                    <th>{T("Notes", "ملاحظات")}</th>
                     {(role === "admin" || role === "hr") && <th>{T("In Photo", "صورة دخول")}</th>}
                     {(role === "admin" || role === "hr") && <th>{T("Out Photo", "صورة خروج")}</th>}
+                    {role === "admin" && <th>{T("Del", "حذف")}</th>}
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0
@@ -1775,7 +1777,7 @@ export default function App() {
                             <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 20 ? a.location_label.substring(0, 20) + "..." : a.location_label}</span> : "—"}</td>
                             <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
                             <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
-                            {a.notes && <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes}</td>}
+                            <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes || "—"}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—") : null}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—") : null}</td>
                             {role === "admin" && (
