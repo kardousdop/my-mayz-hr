@@ -475,9 +475,23 @@ function SignupPage({ lang, setLang, onBack }) {
       if (existing && existing.length > 0) {
         setError(T("This email is already registered.", "هذا البريد الإلكتروني مسجل بالفعل.")); setLoading(false); return;
       }
-      // Get count to generate code
-      const all = await db("employees", "GET", null, "?select=id");
-      const code = "EMP" + String((all?.length || 0) + 1).padStart(3, "0");
+
+      // ── Generate UNIQUE code ──
+      // Get ALL existing codes to find the real max — handles deletions correctly
+      const allEmps = await db("employees", "GET", null, "?select=employee_code");
+      let maxNum = 0;
+      (allEmps || []).forEach(e => {
+        const match = (e.employee_code || "").match(/EMP(\d+)/);
+        if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+      });
+      let nextNum = maxNum + 1;
+      // Double-check this code doesn't already exist (safety net)
+      let code = "EMP" + String(nextNum).padStart(3, "0");
+      while ((allEmps || []).some(e => e.employee_code === code)) {
+        nextNum++;
+        code = "EMP" + String(nextNum).padStart(3, "0");
+      }
+
       // Register in Supabase Auth
       const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
         method: "POST",
@@ -485,10 +499,10 @@ function SignupPage({ lang, setLang, onBack }) {
         body: JSON.stringify({ email, password, data: { name, employee_code: code } }),
       });
       const data = await res.json();
-      // Handle both confirmed and unconfirmed signup
       if (data.error && !data.id) {
         setError(data.error.message || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return;
       }
+
       // Create employee record
       await db("employees", "POST", {
         employee_code: code,
@@ -501,25 +515,36 @@ function SignupPage({ lang, setLang, onBack }) {
         salary: 0,
       });
 
-      // Notify admin via WhatsApp + Email
-      try {
-        const notifSettings = JSON.parse(localStorage.getItem("mymayz_notif") || "{}");
-        const msg = `🆕 New employee registered and waiting for approval!\nName: ${name.trim()}\nEmail: ${email}\nCode: ${code}\nGo to Employees page to activate.`;
-        if (notifSettings.enabled !== false) {
-          (notifSettings.recipients || []).filter(r => r.active && r.role === "Admin").forEach(r => {
-            if (r.whatsapp && r.whatsappKey) {
-              fetch(`https://api.callmebot.com/whatsapp.php?phone=${r.whatsapp}&text=${encodeURIComponent(msg)}&apikey=${r.whatsappKey}`).catch(()=>{});
-            }
-            if (r.email && notifSettings.brevoKey) {
-              fetch("https://api.brevo.com/v3/smtp/email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "api-key": notifSettings.brevoKey },
-                body: JSON.stringify({ sender: { name: "myMayz HR", email: "hello@mymayz.com" }, to: [{ email: r.email, name: r.name }], subject: "🆕 New Employee Registration — Action Required", htmlContent: `<div style="font-family:Arial,sans-serif;padding:24px"><h2>New Employee Registration</h2><p><b>Name:</b> ${name.trim()}</p><p><b>Email:</b> ${email}</p><p><b>Code:</b> ${code}</p><p>Please go to the <b>Employees</b> page to approve and activate this account.</p></div>` })
-              }).catch(()=>{});
-            }
-          });
-        }
-      } catch(e) {}
+      // ── Notify admin — hardcoded credentials (work across all devices) ──
+      const msg = encodeURIComponent(`🆕 New Employee Registration!\nName: ${name.trim()}\nEmail: ${email}\nCode: ${code}\nGo to Employees page to approve.`);
+      // WhatsApp — admin
+      fetch(`https://api.callmebot.com/whatsapp.php?phone=201004444558&text=${msg}&apikey=2789945`).catch(()=>{});
+      // Email — via Brevo
+      fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": "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"
+        },
+        body: JSON.stringify({
+          sender: { name: "myMayz HR", email: "hello@mymayz.com" },
+          to: [{ email: "hello@mymayz.com", name: "Ahmed Kardous" }],
+          subject: `🆕 New Employee Signup — ${name.trim()} (${code})`,
+          htmlContent: `<div style="font-family:Arial,sans-serif;max-width:500px;padding:24px;background:#f5f5f5">
+            <div style="background:#1a2035;padding:20px;border-radius:8px;text-align:center;margin-bottom:20px">
+              <h2 style="color:white;margin:0">my<span style="color:#6366f1">Mayz</span> HR</h2>
+            </div>
+            <div style="background:white;padding:20px;border-radius:8px;border-left:4px solid #f59e0b">
+              <h3 style="color:#f59e0b;margin-top:0">⏳ New Employee Awaiting Approval</h3>
+              <p><b>Name:</b> ${name.trim()}</p>
+              <p><b>Email:</b> ${email}</p>
+              <p><b>Code:</b> ${code}</p>
+              <p style="color:#666">Go to <b>Employees</b> page in myMayz HR to approve and activate this account.</p>
+              <a href="https://my-mayz-hr.vercel.app" style="display:inline-block;background:#6366f1;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;margin-top:10px">Open myMayz HR →</a>
+            </div>
+          </div>`
+        })
+      }).catch(()=>{});
 
       setSuccess({ name: name.trim(), code, email });
     } catch(e) { setError(T("Registration failed. Please try again.", "فشل التسجيل. حاول مرة أخرى.")); }
