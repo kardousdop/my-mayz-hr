@@ -17,12 +17,20 @@ async function db(table, method = "GET", body = null, query = "") {
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   try {
+    // 8 second timeout to prevent hanging
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    opts.signal = controller.signal;
     const res = await fetch(url, opts);
+    clearTimeout(timeout);
     if (!res.ok) { console.error(`DB ${method} ${table}:`, res.status); return null; }
     if (method === "DELETE") return true;
     const text = await res.text();
     return text ? JSON.parse(text) : null;
-  } catch (e) { console.error("DB error:", e); return null; }
+  } catch (e) {
+    if (e.name === "AbortError") { console.warn(`DB timeout: ${table}`); return null; }
+    console.error("DB error:", e); return null;
+  }
 }
 
 // ============================================================
@@ -823,13 +831,29 @@ export default function App() {
   // Save language preference
   useEffect(() => { localStorage.setItem("mymayz_lang", lang); }, [lang]);
 
-  // ── Real-time: auto-refresh data every 30 seconds ──
+  // ── Smart real-time refresh ──
+  // Fast: attendance only every 30s (lightweight)
+  // Full: everything every 3 minutes
   useEffect(() => {
     if (!loggedIn) return;
-    const interval = setInterval(() => {
-      loadAll();
-    }, 30000); // 30 seconds
-    return () => clearInterval(interval);
+
+    const loadAttendanceOnly = async () => {
+      const att = await db("attendance", "GET", null, "?select=*&order=date.desc,check_in.desc&limit=300");
+      if (att) setAttendance(att);
+      // Also refresh requests for badge count
+      const [ex, lv, ln] = await Promise.all([
+        db("excuse_requests", "GET", null, "?select=*&order=created_at.desc"),
+        db("leave_requests", "GET", null, "?select=*&order=created_at.desc"),
+        db("loans", "GET", null, "?select=*&order=created_at.desc"),
+      ]);
+      if (ex) setExcuses(ex);
+      if (lv) setLeaveReqs(lv);
+      if (ln) setLoans(ln);
+    };
+
+    const fastInterval = setInterval(loadAttendanceOnly, 30000);  // 30s — attendance only
+    const slowInterval = setInterval(loadAll, 180000);            // 3min — full refresh
+    return () => { clearInterval(fastInterval); clearInterval(slowInterval); };
   }, [loggedIn]);
 
   useEffect(() => { if (loggedIn) loadAll(); }, [loggedIn]);
@@ -837,22 +861,20 @@ export default function App() {
   const loadAll = async () => {
     const [emps, att, ln, ex, lv, pay, sh, esh] = await Promise.all([
       db("employees", "GET", null, "?select=*&order=name"),
-      db("attendance", "GET", null, "?select=*&order=date.desc&limit=200"),
+      db("attendance", "GET", null, "?select=*&order=date.desc,check_in.desc&limit=300"),
       db("loans", "GET", null, "?select=*&order=created_at.desc"),
       db("excuse_requests", "GET", null, "?select=*&order=created_at.desc"),
       db("leave_requests", "GET", null, "?select=*&order=created_at.desc"),
       db("payroll", "GET", null, "?select=*&order=year.desc,month.desc"),
       db("shifts", "GET", null, "?select=*&order=id"),
-      db("employee_shifts", "GET", null, "?select=*&order=created_at.desc"),
+      db("employee_shifts", "GET", null, "?select=*&order=employee_id"),
     ]);
     if (emps) {
       setEmployees(emps);
-      // Always refresh currentEmployee from latest DB data so work_mode etc. stay current
       if (currentEmployee) {
         const fresh = emps.find(e => e.id === currentEmployee.id);
         if (fresh) {
           setCurrentEmployee(fresh);
-          // Update persisted session with fresh employee data
           const saved = JSON.parse(localStorage.getItem("mymayz_session") || "{}");
           localStorage.setItem("mymayz_session", JSON.stringify({ ...saved, employee: fresh }));
         }
@@ -863,7 +885,8 @@ export default function App() {
     if (ex) setExcuses(ex);
     if (lv) setLeaveReqs(lv);
     if (pay) setPayroll(pay);
-    if (sh && sh.length > 0) setShifts(sh);
+    // Always update shifts from DB — use DEFAULT_SHIFTS only if DB fails completely
+    if (sh !== null && sh !== undefined) setShifts(sh.length > 0 ? sh : DEFAULT_SHIFTS);
     if (esh) setEmpShifts(esh);
 
     // ✅ RESTORE CLOCK-IN STATE FROM DATABASE
