@@ -1491,7 +1491,7 @@ export default function App() {
       <div className="fade-in">
         <div className="tab-bar">
           {[
-            { id: "clockin", label: T("🕐 Clock In/Out", "🕐 تسجيل الحضور") },
+            { id: "clockin", label: T("🕐 Sign In / Sign Out", "🕐 تسجيل الحضور / الانصراف") },
             { id: "reports", label: (role === "admin" || role === "hr" || role === "accountant") ? T("📊 Reports", "📊 التقارير") : T("📊 My Attendance", "📊 حضوري") },
           ].map(tab => (
             <button key={tab.id} className={`tab ${attTab === tab.id ? "active" : ""}`} onClick={() => setAttTab(tab.id)}>{tab.label}</button>
@@ -1503,7 +1503,7 @@ export default function App() {
             <div className="clock-section">
               {/* Clock In */}
               <div className="clock-card in">
-                <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Clock In", "تسجيل الدخول")}</div>
+                <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Sign In", "تسجيل الحضور")}</div>
                 {/* Work mode badge */}
                 {(() => {
                   const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
@@ -1520,10 +1520,10 @@ export default function App() {
                 <div className="clock-date">{dateStr}</div>
                 {!clockedIn
                   ? <button className="clock-btn in" onClick={handleClockIn} disabled={!!verifying}>
-                      {verifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Clock In", "تسجيل الدخول")}
+                      {verifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Sign In", "تسجيل الحضور")}
                     </button>
                   : <div style={{ color: "var(--ok)", fontWeight: 600, fontSize: 15 }}>
-                      ✅ {T("Clocked in at", "تم الدخول في")} {clockInTime?.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                      ✅ {T("Signed in at", "تم تسجيل الحضور في")} {clockInTime?.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                       {locLabel && <div style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>📍 {locLabel}</div>}
                       <div style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>
                         ⏱️ {T("Working for", "مدة العمل")}: {Math.floor((now - clockInTime) / 3600000)}h {Math.floor(((now - clockInTime) % 3600000) / 60000)}m
@@ -1579,14 +1579,14 @@ export default function App() {
 
               {/* Clock Out */}
               <div className="clock-card out">
-                <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Clock Out", "تسجيل الخروج")}</div>
+                <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Sign Out", "تسجيل الانصراف")}</div>
                 <div className="clock-time">{timeStr}</div>
                 <div className="clock-date">{dateStr}</div>
                 {!clockOutDone
                   ? <button className="clock-btn out" onClick={handleClockOut} disabled={!clockedIn || clockOutVerifying}>
-                      {clockOutVerifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Clock Out", "تسجيل الخروج")}
+                      {clockOutVerifying ? <><span className="spinner" style={{ marginRight: 8 }} />{T("Verifying...", "جاري التحقق...")}</> : T("Sign Out", "تسجيل الانصراف")}
                     </button>
-                  : <div style={{ color: "var(--err)", fontWeight: 600, fontSize: 15 }}>✅ {T("Clocked out successfully", "تم تسجيل الخروج بنجاح")}</div>
+                  : <div style={{ color: "var(--err)", fontWeight: 600, fontSize: 15 }}>✅ {T("Signed out successfully", "تم تسجيل الانصراف بنجاح")}</div>
                 }
                 {clockedIn && clockInTime && !clockOutDone && (
                   <div style={{ marginTop: 12, color: "var(--t2)", fontSize: 13 }}>
