@@ -809,22 +809,12 @@ export default function App() {
     const isSaturday = clockTime.getDay() === 6;
     const workMode = currentEmployee?.work_mode || "office";
 
-    // Determine if this clock-in should skip GPS and Camera
-    const skipGpsCamera =
-      workMode === "remote" ||                    // Full remote → always skip
-      (workMode === "hybrid" && isSaturday);      // Hybrid → skip on Saturdays only
+    // Camera is optional for: full remote (always) or hybrid on Saturdays
+    const skipCamera =
+      workMode === "remote" ||
+      (workMode === "hybrid" && isSaturday);
 
-    if (skipGpsCamera) {
-      // ✅ Remote mode: clock in directly, no GPS or camera needed
-      const label = workMode === "remote"
-        ? T("🏠 Working from Home", "🏠 يعمل من المنزل")
-        : T("🏠 Home (Saturday)", "🏠 المنزل (السبت)");
-      setGpsOk(true); setPhotoOk(true); // show green ticks in UI
-      await doSaveClockIn(clockTime, null, label, null);
-      return;
-    }
-
-    // Step 1: GPS (office / hybrid weekdays)
+    // Step 1: GPS — always required for everyone
     setVerifying("gps");
     let loc;
     try {
@@ -834,17 +824,21 @@ export default function App() {
       setGpsErr(e.message); setVerifying(null); return;
     }
 
-    // Step 2: Camera Photo
-    setVerifying("photo");
+    // Step 2: Camera — only for office mode (or hybrid on weekdays)
     let photoData = null;
-    try {
-      photoData = await capturePhoto();
-      setPhoto(photoData);
-      setPhotoOk(true);
-    } catch (e) {
-      setPhotoErr(e.message);
-      setVerifying(null);
-      return;
+    if (!skipCamera) {
+      setVerifying("photo");
+      try {
+        photoData = await capturePhoto();
+        setPhoto(photoData);
+        setPhotoOk(true);
+      } catch (e) {
+        setPhotoErr(e.message);
+        setVerifying(null);
+        return;
+      }
+    } else {
+      setPhotoOk(true); // mark as ok, just no photo taken
     }
 
     // Step 3: Check employee's assigned locations
@@ -1300,9 +1294,9 @@ export default function App() {
             <label>🏢 {T("Work Mode", "نمط العمل")}</label>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {[
-                { id: "office",  icon: "🏢", title: T("Office", "المكتب"),       desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
-                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),         desc: T("GPS + Camera on workdays (Sun–Thu). Saturday = clock in/out only, no GPS or camera", "GPS وكاميرا أيام العمل (أحد–خميس). السبت = تسجيل فقط بدون GPS أو كاميرا") },
-                { id: "remote",  icon: "🏠", title: T("Full Remote", "عمل كامل من المنزل"), desc: T("Clock in/out only — no GPS or camera ever", "تسجيل دخول/خروج فقط — بدون GPS أو كاميرا نهائياً") },
+                { id: "office",  icon: "🏢", title: T("Office", "المكتب"),                  desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
+                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),                    desc: T("GPS always required. Camera on workdays (Sun–Thu) only. No camera on Saturdays", "GPS دائماً مطلوب. الكاميرا أيام العمل (أحد–خميس) فقط. بدون كاميرا السبت") },
+                { id: "remote",  icon: "🏠", title: T("Full Remote", "عمل من المنزل"), desc: T("GPS always required. No camera ever", "GPS دائماً مطلوب. بدون كاميرا نهائياً") },
               ].map(opt => {
                 const selected = (modalData.work_mode || "office") === opt.id;
                 return (
@@ -1495,7 +1489,7 @@ export default function App() {
                   const isRemoteToday = wm === "remote" || (wm === "hybrid" && isSat);
                   if (isRemoteToday) return (
                     <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
-                      🏠 {wm === "remote" ? T("Full Remote Mode", "عمل كامل من المنزل") : T("Saturday Remote", "سبت من المنزل")} — {T("No GPS/Camera needed", "بدون GPS أو كاميرا")}
+                      🏠 {wm === "remote" ? T("Full Remote Mode", "عمل من المنزل") : T("Saturday Remote", "سبت من المنزل")} — {T("GPS required, no camera", "GPS مطلوب، بدون كاميرا")}
                     </div>
                   );
                   return null;
