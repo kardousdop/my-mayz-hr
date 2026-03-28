@@ -470,10 +470,20 @@ function SignupPage({ lang, setLang, onBack }) {
     if (password.length < 8) { setError(T("Password must be at least 8 characters.", "كلمة المرور 8 أحرف على الأقل.")); return; }
     setError(""); setLoading(true);
     try {
-      // Check email not already registered
-      const existing = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=id`);
+      // Check if email already exists in employees table
+      const existing = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(email)}&select=id,status`);
       if (existing && existing.length > 0) {
-        setError(T("This email is already registered.", "هذا البريد الإلكتروني مسجل بالفعل.")); setLoading(false); return;
+        const existingEmp = existing[0];
+        if (existingEmp.status === "pending") {
+          setError(T("This email is already registered and waiting for approval.", "هذا البريد مسجل بالفعل وينتظر الموافقة.")); setLoading(false); return;
+        }
+        if (existingEmp.status === "active") {
+          setError(T("This email is already registered and active. Contact admin.", "هذا البريد مسجل ونشط. تواصل مع المشرف.")); setLoading(false); return;
+        }
+        // status = inactive/deleted — update existing record instead of creating new
+        if (existingEmp.status === "inactive") {
+          setError(T("This email was previously deactivated. Contact admin to reactivate.", "هذا البريد كان معطلاً. تواصل مع المشرف لإعادة التفعيل.")); setLoading(false); return;
+        }
       }
 
       // ── Generate UNIQUE code ──
@@ -499,8 +509,15 @@ function SignupPage({ lang, setLang, onBack }) {
         body: JSON.stringify({ email, password, data: { name, employee_code: code } }),
       });
       const data = await res.json();
-      if (data.error && !data.id) {
-        setError(data.error.message || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return;
+      // If auth user already exists (previously deleted from employees but auth remains)
+      // Supabase returns a fake success — we just proceed to create/update employee record
+      if (data.error && !data.id && !data.access_token) {
+        // Only fail if it's not a "user already exists" situation
+        const errMsg = data.error?.message || data.msg || "";
+        if (!errMsg.toLowerCase().includes("already") && !errMsg.toLowerCase().includes("registered")) {
+          setError(errMsg || T("Registration failed.", "فشل التسجيل.")); setLoading(false); return;
+        }
+        // User exists in auth but not in employees — continue to create employee record
       }
 
       // Create employee record
@@ -1412,6 +1429,32 @@ export default function App() {
             <span className="search-icon">🔍</span>
             <input placeholder={T("Search employees...", "بحث عن موظف...")} value={searchQ} onChange={e => setSearchQ(e.target.value)} />
           </div>
+          {role === "admin" && (
+            <Btn color="outline" size="sm" onClick={async () => {
+              if (!window.confirm(T("Rearrange all employee codes sequentially? (EMP001, EMP002...) This cannot be undone.", "إعادة ترتيب كودات الموظفين تسلسلياً؟ (EMP001, EMP002...) لا يمكن التراجع."))) return;
+              // Sort employees by hire_date or id, then reassign codes
+              const sorted = [...employees]
+                .filter(e => e.status !== "pending")
+                .sort((a, b) => (a.id || 0) - (b.id || 0));
+              let num = 1;
+              for (const emp of sorted) {
+                const newCode = "EMP" + String(num).padStart(3, "0");
+                if (emp.employee_code !== newCode) {
+                  await db("employees", "PATCH", { employee_code: newCode }, `?id=eq.${emp.id}`);
+                }
+                num++;
+              }
+              // Also fix pending employees codes after active ones
+              const pending = employees.filter(e => e.status === "pending");
+              for (const emp of pending) {
+                const newCode = "EMP" + String(num).padStart(3, "0");
+                await db("employees", "PATCH", { employee_code: newCode }, `?id=eq.${emp.id}`);
+                num++;
+              }
+              await loadAll();
+              alert(T(`✅ Done! Rearranged ${num - 1} employee codes.`, `✅ تم! تم إعادة ترتيب ${num - 1} كودات موظفين.`));
+            }}>🔢 {T("Rearrange Codes", "إعادة ترتيب الكودات")}</Btn>
+          )}
           <Btn color="primary" onClick={() => openModal("addEmployee")}>➕ {T("Add Employee", "إضافة موظف")}</Btn>
         </div>
 
