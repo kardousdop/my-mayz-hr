@@ -706,7 +706,14 @@ export default function App() {
       db("shifts", "GET", null, "?select=*&order=id"),
       db("employee_shifts", "GET", null, "?select=*&order=created_at.desc"),
     ]);
-    if (emps) setEmployees(emps);
+    if (emps) {
+      setEmployees(emps);
+      // Always refresh currentEmployee from latest DB data so work_mode etc. stay current
+      if (currentEmployee) {
+        const fresh = emps.find(e => e.id === currentEmployee.id);
+        if (fresh) setCurrentEmployee(fresh);
+      }
+    }
     if (att) setAttendance(att);
     if (ln) setLoans(ln);
     if (ex) setExcuses(ex);
@@ -808,6 +815,7 @@ export default function App() {
     const clockTime = new Date();
     const isSaturday = clockTime.getDay() === 6;
     const workMode = currentEmployee?.work_mode || "office";
+    console.log("🕐 Clock-in | Employee:", currentEmployee?.name, "| work_mode:", workMode, "| isSaturday:", isSaturday);
 
     // Camera is optional for: full remote (always) or hybrid on Saturdays
     const skipCamera =
