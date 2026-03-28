@@ -805,7 +805,26 @@ export default function App() {
   const handleClockIn = async () => {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
-    // Step 1: GPS
+    const clockTime = new Date();
+    const isSaturday = clockTime.getDay() === 6;
+    const workMode = currentEmployee?.work_mode || "office";
+
+    // Determine if this clock-in should skip GPS and Camera
+    const skipGpsCamera =
+      workMode === "remote" ||                    // Full remote → always skip
+      (workMode === "hybrid" && isSaturday);      // Hybrid → skip on Saturdays only
+
+    if (skipGpsCamera) {
+      // ✅ Remote mode: clock in directly, no GPS or camera needed
+      const label = workMode === "remote"
+        ? T("🏠 Working from Home", "🏠 يعمل من المنزل")
+        : T("🏠 Home (Saturday)", "🏠 المنزل (السبت)");
+      setGpsOk(true); setPhotoOk(true); // show green ticks in UI
+      await doSaveClockIn(clockTime, null, label, null);
+      return;
+    }
+
+    // Step 1: GPS (office / hybrid weekdays)
     setVerifying("gps");
     let loc;
     try {
@@ -829,23 +848,17 @@ export default function App() {
     }
 
     // Step 3: Check employee's assigned locations
-    const clockTime = new Date();
-    const day = clockTime.getDay();
-
-    // Get employee's approved location IDs
     const empApprovedLocs = currentEmployee?.approved_locations
       ? (typeof currentEmployee.approved_locations === "string"
           ? JSON.parse(currentEmployee.approved_locations)
           : currentEmployee.approved_locations)
-      : ["office"]; // default to office
+      : ["office"];
 
     const matchedLoc = getMatchedLocation(loc.lat, loc.lng, empApprovedLocs);
 
     if (matchedLoc) {
-      // At an approved location ✅
       await doSaveClockIn(clockTime, loc, matchedLoc.name, photoData);
     } else {
-      // Outside approved locations → must explain
       setPendingLoc(loc); setPendingTime(clockTime);
       setShowLocModal(true); setVerifying(null);
     }
@@ -1280,8 +1293,30 @@ export default function App() {
                 <input value={modalData.payment_mobile || ""} onChange={e => setModalData({ ...modalData, payment_mobile: e.target.value })} placeholder="+201XXXXXXXXX" />
               </div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--info)", marginTop: 4 }}>
-              💡 {T("This ID links our EMP code to the payment company's system for automatic salary export.", "هذا الكود يربط كود الموظف لدينا بنظام شركة الدفع للتصدير التلقائي للرواتب.")}
+          </div>
+
+          {/* Work Mode */}
+          <div className="form-group" style={{ marginBottom: 4 }}>
+            <label>🏢 {T("Work Mode", "نمط العمل")}</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              {[
+                { id: "office",  icon: "🏢", title: T("Office", "المكتب"),       desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
+                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),         desc: T("GPS + Camera on workdays (Sun–Thu). Saturday = clock in/out only, no GPS or camera", "GPS وكاميرا أيام العمل (أحد–خميس). السبت = تسجيل فقط بدون GPS أو كاميرا") },
+                { id: "remote",  icon: "🏠", title: T("Full Remote", "عمل كامل من المنزل"), desc: T("Clock in/out only — no GPS or camera ever", "تسجيل دخول/خروج فقط — بدون GPS أو كاميرا نهائياً") },
+              ].map(opt => {
+                const selected = (modalData.work_mode || "office") === opt.id;
+                return (
+                  <div key={opt.id} onClick={() => setModalData({ ...modalData, work_mode: opt.id })}
+                    style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", background: selected ? "var(--accg)" : "var(--bg2)", border: `2px solid ${selected ? "var(--acc)" : "var(--border)"}`, borderRadius: 10, cursor: "pointer", transition: "all 0.15s" }}>
+                    <div style={{ fontSize: 22, marginTop: 1 }}>{opt.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, color: selected ? "var(--acc)" : "var(--t1)", fontSize: 14 }}>{opt.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                    {selected && <div style={{ color: "var(--acc)", fontWeight: 700, fontSize: 18 }}>✓</div>}
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="form-actions">
@@ -1302,6 +1337,7 @@ export default function App() {
                 approved_locations: JSON.stringify(locs),
                 payment_id: modalData.payment_id || null,
                 payment_mobile: modalData.payment_mobile || null,
+                work_mode: modalData.work_mode || "office",
               }, `?id=eq.${modalData.id}`);
               await loadAll(); setSaving(false); closeModal();
             }}>{saving ? <span className="spinner" /> : T("Save Changes", "حفظ التغييرات")}</Btn>
@@ -1452,6 +1488,18 @@ export default function App() {
               {/* Clock In */}
               <div className="clock-card in">
                 <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Clock In", "تسجيل الدخول")}</div>
+                {/* Work mode badge */}
+                {(() => {
+                  const wm = currentEmployee?.work_mode || "office";
+                  const isSat = new Date().getDay() === 6;
+                  const isRemoteToday = wm === "remote" || (wm === "hybrid" && isSat);
+                  if (isRemoteToday) return (
+                    <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
+                      🏠 {wm === "remote" ? T("Full Remote Mode", "عمل كامل من المنزل") : T("Saturday Remote", "سبت من المنزل")} — {T("No GPS/Camera needed", "بدون GPS أو كاميرا")}
+                    </div>
+                  );
+                  return null;
+                })()}
                 <div className="clock-time">{timeStr}</div>
                 <div className="clock-date">{dateStr}</div>
                 {!clockedIn
