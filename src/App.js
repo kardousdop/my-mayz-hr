@@ -165,6 +165,7 @@ const css = `
   .login-lang button.active{color:var(--acc);font-weight:600}
   .sidebar{width:var(--sw);background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform 0.3s}
   .rtl .sidebar{left:auto;right:0;border-right:none;border-left:1px solid var(--border)}
+  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99;backdrop-filter:blur(2px)}
   .sidebar-header{padding:24px 20px;border-bottom:1px solid var(--border)}
   .sidebar-logo{font-size:22px;font-weight:700}.sidebar-logo span{color:var(--acc)}
   .sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
@@ -191,9 +192,51 @@ const css = `
   .topbar-btn:hover{border-color:var(--acc);color:var(--acc)}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.4)}}
   .topbar-btn svg{width:16px;height:16px}
+  .hamburger{display:none;background:none;border:none;color:var(--t1);font-size:22px;cursor:pointer;padding:4px 8px;line-height:1}
   .lang-toggle{background:var(--accg);border:1px solid var(--acc);color:var(--acc);padding:6px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all 0.2s}
   .lang-toggle:hover{background:var(--acc);color:white}
   .content{padding:28px;flex:1}
+
+  /* ── MOBILE RESPONSIVE ── */
+  @media (max-width: 768px) {
+    :root { --sw: 260px; }
+    .sidebar { transform: translateX(-100%); }
+    .rtl .sidebar { transform: translateX(100%); }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay.open { display: block; }
+    .main { margin-left: 0 !important; margin-right: 0 !important; }
+    .hamburger { display: block; }
+    .topbar { padding: 0 16px; height: 56px; }
+    .topbar-title { font-size: 15px; }
+    .content { padding: 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+    .stat-card { padding: 14px; }
+    .stat-value { font-size: 20px; }
+    .card { padding: 16px; margin-bottom: 14px; }
+    .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .clock-section { grid-template-columns: 1fr; gap: 14px; }
+    .clock-time { font-size: 36px; }
+    .clock-card { padding: 20px 16px; }
+    .clock-btn { padding: 14px 24px; font-size: 16px; }
+    .form-row { flex-direction: column; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 10px; }
+    .btn { padding: 8px 14px; font-size: 12px; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    .modal-box { margin: 16px; max-height: calc(100vh - 32px); }
+    .ss-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .ss-card { padding: 14px 12px; }
+    .live-indicator-text { display: none; }
+    .topbar-actions .lang-toggle { padding: 4px 10px; font-size: 11px; }
+  }
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 12px; }
+    .stat-value { font-size: 18px; }
+    .clock-time { font-size: 30px; }
+    .ss-grid { grid-template-columns: repeat(2, 1fr); }
+    .card-title { font-size: 14px; }
+  }
   .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:28px}
   .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;transition:all 0.2s}
   .stat-card:hover{border-color:var(--border2);transform:translateY(-2px)}
@@ -282,16 +325,6 @@ const css = `
   .pfield label{font-size:12px;color:var(--t3);display:block;margin-bottom:4px}
   .pfield input{width:100%;padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);color:var(--t1);font-size:14px;font-weight:600;outline:none;font-family:inherit}
   .pfield input:focus{border-color:var(--acc)}
-  @media(max-width:768px){
-    .sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}
-    .rtl .sidebar{transform:translateX(100%)}.rtl .sidebar.open{transform:translateX(0)}
-    .main{margin-left:0!important;margin-right:0!important}
-    .clock-section{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}
-    .content{padding:16px}.topbar{padding:0 16px}
-    .mobile-menu{display:block!important}
-    .form-row{grid-template-columns:1fr}
-    .payroll-grid{grid-template-columns:1fr 1fr}
-  }
 `;
 
 // ============================================================
@@ -3134,6 +3167,8 @@ export default function App() {
     <>
       <style>{css}</style>
       <div className={`app ${ar ? "rtl" : ""}`}>
+        {/* Mobile sidebar overlay */}
+        <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-header">
             <div className="sidebar-logo">my<span>Mayz</span> HR</div>
@@ -3163,7 +3198,7 @@ export default function App() {
         <div className="main">
           <header className="topbar">
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button className="topbar-btn mobile-menu" style={{ display: "none" }} onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
+              <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Menu">☰</button>
               <div className="topbar-title">{navItems.find(n => n.id === safePage)?.icon} {navItems.find(n => n.id === safePage)?.label}</div>
             </div>
             <div className="topbar-actions">
@@ -3172,7 +3207,7 @@ export default function App() {
                 style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--ok)", cursor: "pointer" }}
                 onClick={() => loadAll()}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", animation: "pulse 2s infinite" }} />
-                {T("Live", "مباشر")}
+                <span className="live-indicator-text">{T("Live", "مباشر")}</span>
               </div>
               <button className="lang-toggle" onClick={() => setLang(ar ? "en" : "ar")}>{ar ? "English" : "العربية"}</button>
               <button className="topbar-btn notif-dot" title={T("Notifications", "الإشعارات")}>🔔</button>
