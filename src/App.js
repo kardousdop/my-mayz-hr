@@ -4,27 +4,28 @@ import { useState, useEffect } from "react";
 // SUPABASE
 // ============================================================
 const SUPABASE_URL = "https://qijcyebopepzzrrtflvm.supabase.co";
-const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || "";
-const SUPABASE_SERVICE_KEY = process.env.REACT_APP_SUPABASE_SERVICE_KEY || "";
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpamN5ZWJvcGVwenpycnRmbHZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTc3MzUsImV4cCI6MjA5MDEzMzczNX0.Ej8X0ZjLJTLz7yYIHMkX2Y6b1jSnTCXlJgDxiX-SnCo";
+const SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpamN5ZWJvcGVwenpycnRmbHZtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDU1NzczNSwiZXhwIjoyMDkwMTMzNzM1fQ.iNyDJq4Xdzjr_kFlDEvYuIkULuhIrcVAHJ0bt-vumg4";
 
 async function db(table, method = "GET", body = null, query = "") {
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
+  // Use service key for writes to bypass RLS, anon key for reads
+  const key = (method === "GET") ? SUPABASE_ANON_KEY : SUPABASE_SERVICE_KEY;
   const headers = {
     "Content-Type": "application/json",
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    apikey: key,
+    Authorization: `Bearer ${key}`,
     Prefer: "return=representation",
   };
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   try {
-    // 8 second timeout to prevent hanging
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     opts.signal = controller.signal;
     const res = await fetch(url, opts);
     clearTimeout(timeout);
-    if (!res.ok) { console.error(`DB ${method} ${table}:`, res.status); return null; }
+    if (!res.ok) { console.error(`DB ${method} ${table}:`, res.status, await res.text()); return null; }
     if (method === "DELETE") return true;
     const text = await res.text();
     return text ? JSON.parse(text) : null;
