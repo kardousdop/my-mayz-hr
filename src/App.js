@@ -3632,8 +3632,28 @@ export default function App() {
               <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
               <Btn color="primary" disabled={saving || !modalData.name} onClick={async () => {
                 setSaving(true);
-                if (mtype === "addShift") await db("shifts", "POST", modalData);
-                else await db("shifts", "PATCH", modalData, `?id=eq.${modalData.id}`);
+                const saveData = {
+                  name: modalData.name,
+                  name_ar: modalData.name_ar || modalData.name,
+                  start_time: modalData.start_time || "09:00",
+                  end_time: modalData.end_time || "17:00",
+                  grace_minutes: modalData.grace_minutes || 15,
+                  min_hours: modalData.min_hours || 8,
+                  color: modalData.color || "#10b981",
+                  is_night_shift: modalData.is_night_shift || false,
+                  off_days: modalData.off_days || "[]",
+                };
+                console.log("💾 Saving shift:", saveData, "mode:", mtype, "id:", modalData.id);
+                let result;
+                if (mtype === "addShift") {
+                  result = await db("shifts", "POST", saveData);
+                } else {
+                  result = await db("shifts", "PATCH", saveData, `?id=eq.${modalData.id}`);
+                }
+                console.log("💾 Shift save result:", result);
+                if (!result && mtype === "editShift") {
+                  alert(T("⚠️ Could not save shift. Check Supabase RLS policies for the shifts table.", "⚠️ تعذّر حفظ المناوبة. تحقق من صلاحيات Supabase لجدول shifts."));
+                }
                 await loadAll(); setSaving(false); closeModal();
               }}>{saving ? <span className="spinner" /> : T("Save Shift", "حفظ المناوبة")}</Btn>
             </div>
