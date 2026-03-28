@@ -742,6 +742,9 @@ export default function App() {
     if (loggedIn) {
       if (role === "employee") setPage("attendance");
       else setPage("dashboard");
+      // Reset ssTab based on role
+      if (role === "admin" || role === "hr" || role === "accountant") setSsTab("manage");
+      else setSsTab("overview");
     }
   }, [loggedIn, role]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -779,6 +782,7 @@ export default function App() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
+  const [reqFilter, setReqFilter] = useState("pending");
   const todayStr = new Date().toISOString().split("T")[0];
   const [reportFilter, setReportFilter] = useState({ from: todayStr, to: todayStr, emp: "", status: "", sort: "desc", month: "" });
   const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
@@ -2488,17 +2492,21 @@ export default function App() {
     const pendingLv = (role === "admin" || role === "hr") ? leaveReqs.filter(l => l.status === "pending") : myLeaves.filter(l => l.status === "pending");
     const pendingLn = (role === "admin" || role === "hr" || role === "accountant") ? loans.filter(l => l.status === "pending") : [];
 
+    const isAdminHR = role === "admin" || role === "hr";
+    const isAccountant = role === "accountant";
+
     return (
       <div className="fade-in">
         <div className="tab-bar">
           {[
-            { id: "overview", label: T("🏠 Overview", "🏠 نظرة عامة"), show: true },
-            { id: "excuse", label: T("⏰ Request Excuse", "⏰ طلب إذن"), show: true },
-            { id: "leave", label: T("🏖️ Request Leave", "🏖️ طلب إجازة"), show: true },
-            { id: "loanreq", label: T("💰 Request Loan", "💰 طلب قرض"), show: true },
-            { id: "myatt", label: T("📊 My Attendance", "📊 حضوري"), show: true },
-            { id: "manage", label: T("👔 Admin Approvals", "👔 موافقات الإدارة") + ((pendingEx.length + pendingLv.length + pendingLn.length) > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : ""), show: role === "admin" || role === "hr" || role === "accountant" },
-          ].filter(tab => tab.show).map(tab => (
+            { id: "manage", label: T("👔 All Requests", "👔 جميع الطلبات") + (pendingEx.length + pendingLv.length + pendingLn.length > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : ""), show: isAdminHR || isAccountant },
+            { id: "overview", label: T("🏠 Overview", "🏠 نظرة عامة"), show: !isAdminHR && !isAccountant },
+            { id: "excuse", label: T("⏰ Request Excuse", "⏰ طلب إذن"), show: !isAdminHR },
+            { id: "leave", label: T("🏖️ Request Leave", "🏖️ طلب إجازة"), show: !isAdminHR },
+            { id: "loanreq", label: T("💰 Request Loan", "💰 طلب قرض"), show: !isAdminHR },
+            { id: "myatt", label: T("📊 My Attendance", "📊 حضوري"), show: !isAdminHR && !isAccountant },
+            { id: "active", label: T("🟢 Who's Active", "🟢 من يعمل الآن"), show: isAdminHR || isAccountant },
+          ].filter(t => t.show).map(tab => (
             <button key={tab.id} className={`tab ${ssTab === tab.id ? "active" : ""}`} onClick={() => setSsTab(tab.id)}>{tab.label}</button>
           ))}
         </div>
@@ -2683,95 +2691,234 @@ export default function App() {
 
         {ssTab === "manage" && (
           <div>
+            {/* Filter bar */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+              {[
+                { key: "pending",  label: "⏳ Pending",  color: "var(--warn)" },
+                { key: "approved", label: "✅ Approved", color: "var(--ok)" },
+                { key: "rejected", label: "❌ Rejected", color: "var(--err)" },
+                { key: "all",      label: "📋 All",       color: "var(--acc)" },
+              ].map(f => {
+                const allEx = (role === "admin" || role === "hr") ? excuses : myExcuses;
+                const allLv = (role === "admin" || role === "hr") ? leaveReqs : myLeaves;
+                const allLn = (role === "admin" || role === "hr" || role === "accountant") ? loans : [];
+                const all = [...allEx, ...allLv, ...allLn];
+                const count = f.key === "all" ? all.length : f.key === "approved" ? all.filter(r => r.status === "approved" || r.status === "active").length : all.filter(r => r.status === f.key).length;
+                const active = reqFilter === f.key;
+                return (
+                  <button key={f.key} onClick={() => setReqFilter(f.key)}
+                    style={{ padding: "7px 16px", borderRadius: 20, border: `2px solid ${active ? f.color : "var(--border)"}`, background: active ? f.color : "var(--bg2)", color: active ? "white" : "var(--t2)", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
+                    {f.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            {/* Requests list */}
             {(() => {
-              const allExcuses = (role === "admin" || role === "hr") ? excuses : myExcuses;
-              const allLeaves  = (role === "admin" || role === "hr") ? leaveReqs : myLeaves;
-              const allLoans   = (role === "admin" || role === "hr" || role === "accountant") ? loans : [];
+              const allEx = (role === "admin" || role === "hr") ? excuses : myExcuses;
+              const allLv = (role === "admin" || role === "hr") ? leaveReqs : myLeaves;
+              const allLn = (role === "admin" || role === "hr" || role === "accountant") ? loans : [];
               const allReqs = [
-                ...allExcuses.map(r => ({ ...r, _type: "excuse", _icon: "⏰", _label: T("Excuse","إذن") })),
-                ...allLeaves.map(r => ({ ...r, _type: "leave",  _icon: "🏖️", _label: T("Leave","إجازة") })),
-                ...allLoans.map(r =>  ({ ...r, _type: "loan",   _icon: "💰", _label: T("Loan","قرض") })),
-              ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-              const [reqFilter, setReqFilter] = React.useState("pending");
-              const filtered = reqFilter === "all" ? allReqs : allReqs.filter(r => reqFilter === "approved" ? (r.status === "approved" || r.status === "active") : r.status === reqFilter);
-              const counts = { all: allReqs.length, pending: allReqs.filter(r => r.status === "pending").length, approved: allReqs.filter(r => r.status === "approved" || r.status === "active").length, rejected: allReqs.filter(r => r.status === "rejected").length };
+                ...allEx.map(r => ({ ...r, _type: "excuse", _icon: "⏰", _label: T("Excuse","إذن") })),
+                ...allLv.map(r => ({ ...r, _type: "leave",  _icon: "🏖️", _label: T("Leave","إجازة") })),
+                ...allLn.map(r => ({ ...r, _type: "loan",   _icon: "💰", _label: T("Loan","قرض") })),
+              ].sort((a, b) => new Date(b.created_at || b.date || 0) - new Date(a.created_at || a.date || 0));
+              const filtered = reqFilter === "all" ? allReqs : reqFilter === "approved" ? allReqs.filter(r => r.status === "approved" || r.status === "active") : allReqs.filter(r => r.status === reqFilter);
+              if (filtered.length === 0) return (
+                <div className="info-box" style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{T("No requests found","لا توجد طلبات")}</div>
+                  <div style={{ fontSize: 12, color: "var(--t3)" }}>{T("Requests appear here when employees submit them","ستظهر الطلبات هنا عندما يقدمها الموظفون")}</div>
+                </div>
+              );
+              return filtered.map((r, i) => {
+                const emp = employees.find(e => e.id === r.employee_id);
+                const isPending = r.status === "pending";
+                const canAct = (role === "admin" || role === "hr") && isPending;
+                const statusColor = r.status === "pending" ? "var(--warn)" : (r.status === "approved" || r.status === "active") ? "var(--ok)" : "var(--err)";
+                const statusBadge = (r.status === "approved" || r.status === "active") ? "green" : r.status === "pending" ? "yellow" : "red";
+                const submittedAt = r.created_at ? new Date(r.created_at).toLocaleString("en-US", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : r.date || "—";
+                return (
+                  <div key={i} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `4px solid ${statusColor}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10, display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 22, flexShrink: 0, marginTop: 2 }}>{r._icon}</div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: "var(--t1)" }}>{r._label}</span>
+                        {emp && <span style={{ fontSize: 13, color: "var(--acc2)", fontWeight: 600 }}>— {emp.name} <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400 }}>({emp.employee_code})</span></span>}
+                        <span className={`badge ${statusBadge}`} style={{ marginLeft: "auto", fontSize: 11 }}>
+                          {r.status === "active" ? "✅ Active" : r.status === "approved" ? "✅ Approved" : r.status === "pending" ? "⏳ Pending" : "❌ Rejected"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "var(--t3)", marginBottom: 4 }}>
+                        {r._type === "excuse" && <><span>📅 {r.date}</span><span>🕐 {r.from_time} → {r.to_time}</span><span>📝 {r.type}</span></>}
+                        {r._type === "leave"  && <><span>📅 {r.start_date} → {r.end_date}</span><span>🗓️ {r.days} {T("days","أيام")}</span><span>📝 {r.type}</span></>}
+                        {r._type === "loan"   && <><span>💵 {Number(r.amount||0).toLocaleString()} EGP</span><span>💸 {Number(r.monthly_deduction||0).toLocaleString()} EGP/mo</span><span>📅 {r.start_date}</span></>}
+                        {r.reason && <span style={{ color: "var(--t2)", fontStyle: "italic" }}>"{r.reason}"</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--t3)" }}>🕐 {T("Submitted","قُدِّم")} {submittedAt}</div>
+                    </div>
+                    {canAct && (
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                        <Btn size="sm" color="success" onClick={async () => {
+                          if (r._type === "excuse") { await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
+                          else if (r._type === "leave") { await db("leave_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
+                          else if (r._type === "loan") {
+                            const months=["January","February","March","April","May","June","July","August","September","October","November","December"];
+                            await db("loans","PATCH",{status:"active",approved_by:currentEmployee?.name||"Admin"},`?id=eq.${r.id}`);
+                            const curMonth=months[new Date().getMonth()]; const curYear=new Date().getFullYear();
+                            const empData=employees.find(e=>e.id===r.employee_id);
+                            const existingPay=payroll.find(p=>p.employee_id===r.employee_id&&p.month===curMonth&&p.year===curYear);
+                            const loanDed=Number(r.monthly_deduction)||0;
+                            if(existingPay){await db("payroll","PATCH",{loan_deduction:loanDed,net_salary:Number(existingPay.net_salary)-loanDed},`?id=eq.${existingPay.id}`);}
+                            else if(empData){const net=(empData.salary||0)+(empData.allowances||0)+(empData.bonuses||0)-(empData.deductions||0)-(empData.tax||0)-(empData.insurance||0)-loanDed;await db("payroll","POST",{employee_id:empData.id,month:curMonth,year:curYear,base_salary:empData.salary||0,allowances:empData.allowances||0,bonuses:empData.bonuses||0,deductions:empData.deductions||0,tax:empData.tax||0,insurance:empData.insurance||0,loan_deduction:loanDed,net_salary:net,status:"pending"});}
+                            sendNotification("loan_approved",`✅ Loan approved for ${emp?.name}`);
+                          }
+                          loadAll();
+                        }}>✅ {T("Approve","موافقة")}</Btn>
+                        <Btn size="sm" color="danger" onClick={async () => {
+                          if(r._type==="excuse") await db("excuse_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                          else if(r._type==="leave") await db("leave_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                          else if(r._type==="loan") await db("loans","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                          loadAll();
+                        }}>❌ {T("Reject","رفض")}</Btn>
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+        {/* ── WHO'S ACTIVE NOW ── */}
+        {ssTab === "active" && (
+          <div>
+            {(() => {
+              const now2 = new Date();
+              const todayStr = now2.toISOString().split("T")[0];
+              const todayAtt = attendance.filter(a => a.date === todayStr);
+
+              // Determine shift status for each employee
+              const empStatus = employees.filter(e => e.status === "active").map(emp => {
+                const att = todayAtt.find(a => a.employee_id === emp.id && !a.check_out);
+                const attAll = todayAtt.filter(a => a.employee_id === emp.id);
+                const lastAtt = attAll.sort((a,b) => new Date(b.check_in) - new Date(a.check_in))[0];
+                const es = empShifts.find(x => x.employee_id === emp.id);
+                const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+
+                // Is this employee's shift currently running?
+                let shiftActive = false;
+                let shiftLabel = shift ? `${shift.name} (${shift.start_time}–${shift.end_time})` : T("No shift assigned","لا توجد مناوبة");
+                if (shift) {
+                  const [sh, sm] = shift.start_time.split(":").map(Number);
+                  const [eh, em] = shift.end_time.split(":").map(Number);
+                  const nowMin = now2.getHours() * 60 + now2.getMinutes();
+                  const startMin = sh * 60 + sm;
+                  let endMin = eh * 60 + em;
+                  if (shift.is_night_shift && endMin < startMin) endMin += 1440;
+                  shiftActive = nowMin >= startMin && nowMin <= endMin;
+                }
+
+                return { emp, att, lastAtt, shift, shiftActive, shiftLabel,
+                  isSignedIn: !!att,
+                  signInTime: att ? new Date(att.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : null,
+                  signOutTime: lastAtt?.check_out ? new Date(lastAtt.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : null,
+                  hoursWorked: att ? ((now2 - new Date(att.check_in)) / 3600000).toFixed(1) : null,
+                };
+              });
+
+              const signedIn = empStatus.filter(e => e.isSignedIn);
+              const inShiftNotSignedIn = empStatus.filter(e => !e.isSignedIn && e.shiftActive);
+              const outOfShift = empStatus.filter(e => !e.isSignedIn && !e.shiftActive);
+
               return (
                 <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                  {/* Summary */}
+                  <div className="stats-grid" style={{ marginBottom: 20 }}>
                     {[
-                      { key: "pending",  label: T("⏳ Pending","⏳ معلق"),    color: "var(--warn)" },
-                      { key: "approved", label: T("✅ Approved","✅ موافق"),   color: "var(--ok)" },
-                      { key: "rejected", label: T("❌ Rejected","❌ مرفوض"),   color: "var(--err)" },
-                      { key: "all",      label: T("📋 All","📋 الكل"),         color: "var(--acc)" },
-                    ].map(f => (
-                      <button key={f.key} onClick={() => setReqFilter(f.key)}
-                        style={{ padding: "8px 16px", borderRadius: 20, border: `2px solid ${reqFilter === f.key ? f.color : "var(--border)"}`, background: reqFilter === f.key ? f.color : "var(--bg2)", color: reqFilter === f.key ? "white" : "var(--t2)", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
-                        {f.label} ({counts[f.key]})
-                      </button>
+                      { label: T("Currently Working","يعملون الآن"), value: signedIn.length, color: "green", icon: "🟢" },
+                      { label: T("Absent in Shift","غائبون في وقت العمل"), value: inShiftNotSignedIn.length, color: "red", icon: "🔴" },
+                      { label: T("Off Shift","خارج الوردية"), value: outOfShift.length, color: "yellow", icon: "⚪" },
+                      { label: T("Total Active Staff","إجمالي الموظفين"), value: empStatus.length, color: "blue", icon: "👥" },
+                    ].map((s,i) => (
+                      <div key={i} className="stat-card">
+                        <div className={`stat-icon ${s.color}`}>{s.icon}</div>
+                        <div className="stat-value">{s.value}</div>
+                        <div className="stat-label">{s.label}</div>
+                      </div>
                     ))}
                   </div>
-                  {filtered.length === 0
-                    ? <div className="info-box" style={{ textAlign: "center", padding: 40 }}>
-                        <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                        <div>{T("No requests found","لا توجد طلبات")}</div>
-                      </div>
-                    : filtered.map((r, i) => {
-                      const emp = employees.find(e => e.id === r.employee_id);
-                      const isPending = r.status === "pending";
-                      const canAct = (role === "admin" || role === "hr") && isPending;
-                      return (
-                        <div key={i} className="req-card" style={{ marginBottom: 12, borderLeft: `3px solid ${r.status === "pending" ? "var(--warn)" : r.status === "approved" || r.status === "active" ? "var(--ok)" : "var(--err)"}` }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 18 }}>{r._icon}</span>
-                              <span style={{ fontWeight: 700, color: "var(--t1)", fontSize: 14 }}>{r._label}</span>
-                              {emp && <span style={{ fontSize: 13, color: "var(--acc)", fontWeight: 600 }}>— {emp.name} ({emp.employee_code})</span>}
-                              <span className={`badge ${r.status === "pending" ? "yellow" : r.status === "approved" || r.status === "active" ? "green" : "red"}`} style={{ fontSize: 11, marginLeft: "auto" }}>
-                                {r.status === "active" ? T("Active","نشط") : r.status}
-                              </span>
+
+                  {/* Currently Signed In */}
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div className="card-title" style={{ marginBottom: 16, color: "var(--ok)" }}>🟢 {T("Currently Working","يعملون الآن")} ({signedIn.length})</div>
+                    {signedIn.length === 0
+                      ? <div className="info-box">{T("No employees currently signed in","لا يوجد موظفون حاضرون الآن")}</div>
+                      : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {signedIn.map((e,i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--okb)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 10 }}>
+                              <div className="emp-avatar">{e.emp.avatar || e.emp.name?.substring(0,2)}</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, color: "var(--t1)", fontSize: 14 }}>{e.emp.name}</div>
+                                <div style={{ fontSize: 12, color: "var(--t3)" }}>{e.shiftLabel}</div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 13, color: "var(--ok)", fontWeight: 600 }}>✅ {T("In since","دخل في")} {e.signInTime}</div>
+                                <div style={{ fontSize: 12, color: "var(--t3)" }}>⏱️ {e.hoursWorked}h {T("worked","عمل")}</div>
+                              </div>
                             </div>
-                            <div style={{ fontSize: 13, color: "var(--t3)", display: "flex", gap: 16, flexWrap: "wrap" }}>
-                              {r._type === "excuse" && <><span>📅 {r.date}</span><span>🕐 {r.from_time} → {r.to_time}</span><span>📝 {r.type}</span></>}
-                              {r._type === "leave"  && <><span>📅 {r.start_date} → {r.end_date}</span><span>🗓️ {r.days} {T("days","أيام")}</span><span>📝 {r.type}</span></>}
-                              {r._type === "loan"   && <><span>💵 {Number(r.amount||0).toLocaleString()} EGP</span><span>💸 {Number(r.monthly_deduction||0).toLocaleString()} EGP/{T("mo","شهر")}</span><span>📅 {r.start_date}</span></>}
-                              {r.reason && <span style={{ color: "var(--t2)" }}>"{r.reason}"</span>}
-                            </div>
-                          </div>
-                          {canAct && (
-                            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                              <Btn size="sm" color="success" onClick={async () => {
-                                if (r._type === "excuse") { await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
-                                else if (r._type === "leave") { await db("leave_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
-                                else if (r._type === "loan") {
-                                  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-                                  await db("loans","PATCH",{status:"active",approved_by:currentEmployee?.name||"Admin"},`?id=eq.${r.id}`);
-                                  const curMonth = months[new Date().getMonth()]; const curYear = new Date().getFullYear();
-                                  const empData = employees.find(e => e.id === r.employee_id);
-                                  const existingPay = payroll.find(p => p.employee_id === r.employee_id && p.month === curMonth && p.year === curYear);
-                                  const loanDed = Number(r.monthly_deduction)||0;
-                                  if (existingPay) { await db("payroll","PATCH",{loan_deduction:loanDed,net_salary:Number(existingPay.net_salary)-loanDed},`?id=eq.${existingPay.id}`); }
-                                  else if (empData) { const net=(empData.salary||0)+(empData.allowances||0)+(empData.bonuses||0)-(empData.deductions||0)-(empData.tax||0)-(empData.insurance||0)-loanDed; await db("payroll","POST",{employee_id:empData.id,month:curMonth,year:curYear,base_salary:empData.salary||0,allowances:empData.allowances||0,bonuses:empData.bonuses||0,deductions:empData.deductions||0,tax:empData.tax||0,insurance:empData.insurance||0,loan_deduction:loanDed,net_salary:net,status:"pending"}); }
-                                  sendNotification("loan_approved",`✅ Loan approved for ${emp?.name} — ${Number(r.amount).toLocaleString()} EGP`);
-                                }
-                                loadAll();
-                              }}>✅ {T("Approve","موافقة")}</Btn>
-                              <Btn size="sm" color="danger" onClick={async () => {
-                                if (r._type === "excuse") await db("excuse_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
-                                else if (r._type === "leave") await db("leave_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
-                                else if (r._type === "loan") await db("loans","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
-                                loadAll();
-                              }}>❌ {T("Reject","رفض")}</Btn>
-                            </div>
-                          )}
+                          ))}
                         </div>
-                      );
-                    })
-                  }
+                    }
+                  </div>
+
+                  {/* In shift but not signed in */}
+                  {inShiftNotSignedIn.length > 0 && (
+                    <div className="card" style={{ marginBottom: 16 }}>
+                      <div className="card-title" style={{ marginBottom: 16, color: "var(--err)" }}>🔴 {T("Should Be Working — Not Signed In","يجب أن يكونوا حاضرين ولم يسجلوا")} ({inShiftNotSignedIn.length})</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {inShiftNotSignedIn.map((e,i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--errb)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10 }}>
+                            <div className="emp-avatar">{e.emp.avatar || e.emp.name?.substring(0,2)}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, color: "var(--t1)", fontSize: 14 }}>{e.emp.name}</div>
+                              <div style={{ fontSize: 12, color: "var(--t3)" }}>{e.shiftLabel}</div>
+                            </div>
+                            <span className="badge red">⚠️ {T("Absent","غائب")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Off shift */}
+                  <div className="card">
+                    <div className="card-title" style={{ marginBottom: 16 }}>⚪ {T("Off Shift / No Shift","خارج الوردية")} ({outOfShift.length})</div>
+                    {outOfShift.length === 0
+                      ? <div className="info-box">{T("All employees are in their shifts","جميع الموظفين في وردياتهم")}</div>
+                      : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {outOfShift.map((e,i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 10 }}>
+                              <div className="emp-avatar" style={{ opacity: 0.6 }}>{e.emp.avatar || e.emp.name?.substring(0,2)}</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, color: "var(--t2)", fontSize: 14 }}>{e.emp.name}</div>
+                                <div style={{ fontSize: 12, color: "var(--t3)" }}>{e.shiftLabel}</div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                {e.signOutTime
+                                  ? <div style={{ fontSize: 12, color: "var(--t3)" }}>🚪 {T("Left at","خرج في")} {e.signOutTime}</div>
+                                  : <span className="badge gray">{T("Off Today","لم يسجل اليوم")}</span>
+                                }
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                    }
+                  </div>
                 </>
               );
             })()}
           </div>
-        )}        )}
+        )}
       </div>
     );
   };
@@ -2933,24 +3080,21 @@ export default function App() {
         </div>
 
         {/* Test button */}
-        <div style={{ marginTop: 16 }}>
-          <Btn color="outline" onClick={() => sendNotification("leave_request", "🧪 This is a test notification from myMayz HR System")}>
+        <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Btn color="primary" onClick={async () => {
+            // Force enable leave_request for testing
+            const testSettings = { ...notifSettings, enabled: true, events: { ...notifSettings.events, leave_request: { ...(notifSettings.events?.leave_request || {}), on: true } } };
+            await new Promise(resolve => {
+              localStorage.setItem("mymayz_notif", JSON.stringify(testSettings));
+              resolve();
+            });
+            sendNotification("leave_request", "🧪 Test from myMayz HR — WhatsApp & Email working!");
+            alert(T("Test notification sent! Check your WhatsApp and email.", "تم إرسال الإشعار التجريبي! تحقق من واتساب والبريد الإلكتروني."));
+          }}>
             🧪 {T("Send Test Notification", "إرسال إشعار تجريبي")}
           </Btn>
         </div>
       </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div className="card-title">🔔 {T("Notification Settings", "إعدادات الإشعارات")}</div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <div style={{ width: 44, height: 24, background: notifSettings.enabled ? "var(--ok)" : "var(--border)", borderRadius: 12, position: "relative", transition: "all 0.2s", cursor: "pointer" }}
-              onClick={() => saveNotifSettings({ ...notifSettings, enabled: !notifSettings.enabled })}>
-              <div style={{ width: 18, height: 18, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: notifSettings.enabled ? 23 : 3, transition: "all 0.2s" }} />
-            </div>
-            <span style={{ fontSize: 13, color: notifSettings.enabled ? "var(--ok)" : "var(--t3)" }}>
-              {notifSettings.enabled ? T("Enabled", "مفعل") : T("Disabled", "معطل")}
-            </span>
-          </label>
-        </div>
 
       <div className="card">
         <div className="card-title" style={{ marginBottom: 16 }}>📍 {T("Approved GPS Locations", "مواقع العمل المعتمدة")}</div>
