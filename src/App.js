@@ -189,6 +189,7 @@ const css = `
   .topbar-actions{display:flex;align-items:center;gap:12px}
   .topbar-btn{background:var(--bg2);border:1px solid var(--border);color:var(--t2);width:36px;height:36px;border-radius:var(--rs);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
   .topbar-btn:hover{border-color:var(--acc);color:var(--acc)}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.4)}}
   .topbar-btn svg{width:16px;height:16px}
   .lang-toggle{background:var(--accg);border:1px solid var(--acc);color:var(--acc);padding:6px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all 0.2s}
   .lang-toggle:hover{background:var(--acc);color:white}
@@ -626,11 +627,16 @@ function LoginPage({ lang, setLang, role, onLogin, onBack }) {
 // MAIN APP
 // ============================================================
 export default function App() {
-  const [lang, setLang] = useState("en");
-  const [portal, setPortal] = useState(null); // null = portal selector
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [role, setRole] = useState("employee");
-  const [currentEmployee, setCurrentEmployee] = useState(null);
+  // ── Restore session from localStorage on first load ──
+  const savedSession = (() => {
+    try { return JSON.parse(localStorage.getItem("mymayz_session") || "null"); } catch { return null; }
+  })();
+
+  const [lang, setLang] = useState(() => localStorage.getItem("mymayz_lang") || "en");
+  const [portal, setPortal] = useState(savedSession?.portal || null);
+  const [loggedIn, setLoggedIn] = useState(!!savedSession?.role);
+  const [role, setRole] = useState(savedSession?.role || "employee");
+  const [currentEmployee, setCurrentEmployee] = useState(savedSession?.employee || null);
   const [page, setPage] = useState("dashboard");
 
   // Set default page based on role when logged in
@@ -688,10 +694,17 @@ export default function App() {
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
 
+  // Save language preference
+  useEffect(() => { localStorage.setItem("mymayz_lang", lang); }, [lang]);
+
+  // ── Real-time: auto-refresh data every 30 seconds ──
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!loggedIn) return;
+    const interval = setInterval(() => {
+      loadAll();
+    }, 30000); // 30 seconds
+    return () => clearInterval(interval);
+  }, [loggedIn]);
 
   useEffect(() => { if (loggedIn) loadAll(); }, [loggedIn]);
 
@@ -711,7 +724,12 @@ export default function App() {
       // Always refresh currentEmployee from latest DB data so work_mode etc. stay current
       if (currentEmployee) {
         const fresh = emps.find(e => e.id === currentEmployee.id);
-        if (fresh) setCurrentEmployee(fresh);
+        if (fresh) {
+          setCurrentEmployee(fresh);
+          // Update persisted session with fresh employee data
+          const saved = JSON.parse(localStorage.getItem("mymayz_session") || "{}");
+          localStorage.setItem("mymayz_session", JSON.stringify({ ...saved, employee: fresh }));
+        }
       }
     }
     if (att) setAttendance(att);
@@ -794,6 +812,8 @@ export default function App() {
     setRole(r);
     setCurrentEmployee(emp);
     setLoggedIn(true);
+    // Persist session
+    localStorage.setItem("mymayz_session", JSON.stringify({ role: r, employee: emp, portal: portal }));
   };
 
   const handleLogout = () => {
@@ -804,6 +824,8 @@ export default function App() {
     setClockedIn(false);
     setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
     setClockOutDone(false);
+    // Clear session
+    localStorage.removeItem("mymayz_session");
   };
 
   // ============================================================
@@ -3053,6 +3075,13 @@ export default function App() {
               <div className="topbar-title">{navItems.find(n => n.id === safePage)?.icon} {navItems.find(n => n.id === safePage)?.label}</div>
             </div>
             <div className="topbar-actions">
+              {/* Live indicator — pulses every 30s */}
+              <div title={T("Live — data refreshes every 30s", "مباشر — البيانات تتحدث كل 30 ثانية")}
+                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--ok)", cursor: "pointer" }}
+                onClick={() => loadAll()}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", animation: "pulse 2s infinite" }} />
+                {T("Live", "مباشر")}
+              </div>
               <button className="lang-toggle" onClick={() => setLang(ar ? "en" : "ar")}>{ar ? "English" : "العربية"}</button>
               <button className="topbar-btn notif-dot" title={T("Notifications", "الإشعارات")}>🔔</button>
             </div>
