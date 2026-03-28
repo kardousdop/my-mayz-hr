@@ -1507,6 +1507,8 @@ export default function App() {
                 {/* Work mode badge */}
                 {(() => {
                   const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
+                  const d = new Date().getDay();
+                  const isRemoteToday = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
                   if (isRemoteToday) return (
                     <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
                       🏠 {wm === "remote" ? T("Full Remote Mode", "عمل من المنزل") : T("Hybrid — Fri/Sat Remote", "هجين — جمعة/سبت من المنزل")} — {T("GPS required, no camera", "GPS مطلوب، بدون كاميرا")}
