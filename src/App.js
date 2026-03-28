@@ -1203,53 +1203,139 @@ export default function App() {
     const pending = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length;
     const totalPayroll = employees.reduce((s, e) => s + (Number(e.salary) || 0), 0);
 
+    const [dashFilter, setDashFilter] = useState("all");
+    const [dashSort, setDashSort] = useState("checkin_desc");
+    const [dashEmpSearch, setDashEmpSearch] = useState("");
+
+    const filteredTodayAtt = todayAtt
+      .filter(a => {
+        if (dashFilter === "present") return a.status === "present";
+        if (dashFilter === "late") return a.status === "late" || a.status === "very_late";
+        if (dashFilter === "incomplete") return a.status === "incomplete";
+        if (dashFilter === "out") return !!a.check_out;
+        if (dashFilter === "still_in") return !a.check_out;
+        return true;
+      })
+      .filter(a => {
+        if (!dashEmpSearch) return true;
+        const emp = employees.find(e => e.id === a.employee_id);
+        return emp?.name?.toLowerCase().includes(dashEmpSearch.toLowerCase());
+      })
+      .sort((a, b) => {
+        if (dashSort === "checkin_desc") return new Date(b.check_in||0) - new Date(a.check_in||0);
+        if (dashSort === "checkin_asc") return new Date(a.check_in||0) - new Date(b.check_in||0);
+        if (dashSort === "name_asc") { const ea=employees.find(e=>e.id===a.employee_id); const eb=employees.find(e=>e.id===b.employee_id); return (ea?.name||"").localeCompare(eb?.name||""); }
+        if (dashSort === "status") return (a.status||"").localeCompare(b.status||"");
+        return 0;
+      });
+
     return (
       <div className="fade-in">
+        {/* Clickable stat cards */}
         <div className="stats-grid">
           {[
-            { icon: "👥", color: "blue", value: employees.length, label: T("Total Employees", "إجمالي الموظفين") },
-            { icon: "✅", color: "green", value: todayAtt.filter(a => a.check_in).length, label: T("Present Today", "حضور اليوم") },
-            { icon: "⏰", color: "yellow", value: todayAtt.filter(a => a.status === "late").length, label: T("Late Today", "متأخرون اليوم") },
-            { icon: "📋", color: "red", value: pending, label: T("Pending Requests", "طلبات معلقة") },
-            { icon: "💰", color: "purple", value: totalPayroll.toLocaleString() + " EGP", label: T("Monthly Payroll", "الرواتب الشهرية") },
-            { icon: "💳", color: "green", value: loans.filter(l => l.status === "active").length, label: T("Active Loans", "قروض نشطة") },
+            { key: "all",        icon: "👥", color: "blue",   value: employees.length,                                         label: T("Total Employees","إجمالي الموظفين"),  nav: "employees" },
+            { key: "present",    icon: "✅", color: "green",  value: todayAtt.filter(a => a.check_in).length,                  label: T("Present Today","حضور اليوم") },
+            { key: "late",       icon: "⏰", color: "yellow", value: todayAtt.filter(a => a.status === "late" || a.status === "very_late").length, label: T("Late Today","متأخرون اليوم") },
+            { key: "still_in",   icon: "🟢", color: "green",  value: todayAtt.filter(a => a.check_in && !a.check_out).length,  label: T("Still Working","لا يزالون يعملون") },
+            { key: "requests",   icon: "📋", color: "red",    value: pending,                                                  label: T("Pending Requests","طلبات معلقة"),     nav: "selfservice" },
+            { key: "payroll",    icon: "💰", color: "purple", value: totalPayroll.toLocaleString() + " EGP",                   label: T("Monthly Payroll","الرواتب الشهرية"),  nav: "payroll" },
           ].map((s, i) => (
-            <div className="stat-card" key={i}>
+            <div key={i} className="stat-card" style={{ cursor: s.nav || s.key !== "payroll" ? "pointer" : "default" }}
+              onClick={() => {
+                if (s.nav) { setPage(s.nav); return; }
+                if (["present","late","still_in","incomplete"].includes(s.key)) setDashFilter(s.key);
+              }}>
               <div className={`stat-icon ${s.color}`}>{s.icon}</div>
               <div className="stat-value" style={{ fontSize: 22 }}>{s.value}</div>
               <div className="stat-label">{s.label}</div>
+              {["present","late","still_in"].includes(s.key) && (
+                <div style={{ fontSize: 10, color: "var(--acc)", marginTop: 4, fontWeight: 500 }}>
+                  {dashFilter === s.key ? "✓ " + T("Filtered","مفلتر") : T("Click to filter ↓","اضغط للتصفية ↓")}
+                </div>
+              )}
             </div>
           ))}
         </div>
 
+        {/* Today's Attendance — filterable & sortable */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📅 {T("Today's Attendance", "حضور اليوم")} — {today}</div>
+            <div className="card-title">📅 {T("Today's Attendance","حضور اليوم")} — {today}
+              <span style={{ fontSize: 12, color: "var(--t3)", fontWeight: 400, marginLeft: 8 }}>({filteredTodayAtt.length} {T("records","سجل")})</span>
+            </div>
           </div>
+
+          {/* Filter + Sort bar */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Status filter pills */}
+            {[
+              { key: "all",        label: T("All","الكل"),              color: "var(--acc)" },
+              { key: "present",    label: T("✅ Present","✅ حاضر"),     color: "var(--ok)" },
+              { key: "late",       label: T("⏰ Late","⏰ متأخر"),        color: "var(--warn)" },
+              { key: "still_in",   label: T("🟢 Still In","🟢 داخل"),   color: "var(--ok)" },
+              { key: "out",        label: T("🚪 Checked Out","🚪 خرج"),  color: "var(--err)" },
+              { key: "incomplete", label: T("❌ Incomplete","❌ ناقص"),   color: "var(--err)" },
+            ].map(f => (
+              <button key={f.key} onClick={() => setDashFilter(f.key)}
+                style={{ padding: "5px 12px", borderRadius: 20, border: `2px solid ${dashFilter === f.key ? f.color : "var(--border)"}`, background: dashFilter === f.key ? f.color : "var(--bg2)", color: dashFilter === f.key ? "white" : "var(--t2)", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, transition: "all 0.15s", whiteSpace: "nowrap" }}>
+                {f.label}
+              </button>
+            ))}
+
+            {/* Sort */}
+            <select value={dashSort} onChange={e => setDashSort(e.target.value)}
+              style={{ marginLeft: "auto", padding: "5px 28px 5px 10px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t2)", fontFamily: "inherit", fontSize: 12, outline: "none" }}>
+              <option value="checkin_desc">🔽 {T("Newest First","الأحدث أولاً")}</option>
+              <option value="checkin_asc">🔼 {T("Oldest First","الأقدم أولاً")}</option>
+              <option value="name_asc">🔤 {T("Name A-Z","الاسم أ-ي")}</option>
+              <option value="status">📊 {T("By Status","حسب الحالة")}</option>
+            </select>
+
+            {/* Search */}
+            <input placeholder={T("Search employee...","بحث موظف...")} value={dashEmpSearch}
+              onChange={e => setDashEmpSearch(e.target.value)}
+              style={{ padding: "5px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, outline: "none", width: 150 }} />
+          </div>
+
           <div style={{ overflowX: "auto" }}>
             <table>
               <thead><tr>
-                <th>{T("Employee", "الموظف")}</th>
-                <th>{T("Check In", "دخول")}</th>
-                <th>{T("Check Out", "خروج")}</th>
-                <th>{T("Location", "الموقع")}</th>
-                <th>{T("GPS", "GPS")}</th>
-                <th>{T("Status", "الحالة")}</th>
-                <th>{T("Photo", "صورة")}</th>
+                <th>{T("Employee","الموظف")}</th>
+                <th>{T("Check In","دخول")}</th>
+                <th>{T("Check Out","خروج")}</th>
+                <th>{T("Hours","ساعات")}</th>
+                <th>{T("Location","الموقع")}</th>
+                <th>{T("GPS","GPS")}</th>
+                <th>{T("Status","الحالة")}</th>
+                <th>{T("Photo","صورة")}</th>
               </tr></thead>
               <tbody>
-                {todayAtt.length === 0
-                  ? <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>{T("No attendance recorded today", "لا يوجد حضور اليوم")}</td></tr>
-                  : todayAtt.map((a, i) => {
+                {filteredTodayAtt.length === 0
+                  ? <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>
+                      {dashFilter !== "all" ? T("No records match this filter","لا توجد سجلات لهذا الفلتر") : T("No attendance recorded today","لا يوجد حضور اليوم")}
+                    </td></tr>
+                  : filteredTodayAtt.map((a, i) => {
                     const emp = employees.find(e => e.id === a.employee_id);
+                    const hrs = a.hours_worked ? `${a.hours_worked}h` : (a.check_in && !a.check_out ? (() => { const diff = (new Date() - new Date(a.check_in))/3600000; return `${diff.toFixed(1)}h ⏳`; })() : "—");
+                    const statusBadge = a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray";
                     return (
-                      <tr key={i}>
-                        <td><div className="emp-row"><div className="emp-avatar">{emp?.avatar || "?"}</div><span style={{ color: "var(--t1)", fontWeight: 500 }}>{emp?.name || "Unknown"}</span></div></td>
-                        <td style={{ color: "var(--ok)" }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                        <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                        <td>{a.location_label ? <span className="badge blue">{a.location_label}</span> : "—"}</td>
+                      <tr key={i} style={{ background: a.status === "very_late" ? "rgba(239,68,68,0.03)" : a.status === "late" ? "rgba(245,158,11,0.03)" : "" }}>
+                        <td>
+                          <div className="emp-row">
+                            <div className="emp-avatar">{emp?.avatar || "?"}</div>
+                            <div>
+                              <div style={{ color: "var(--t1)", fontWeight: 600, fontSize: 13 }}>{emp?.name || "Unknown"}</div>
+                              <div style={{ fontSize: 11, color: "var(--t3)" }}>{emp?.employee_code}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ color: "var(--ok)", fontWeight: 600 }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                        <td style={{ color: a.check_out ? "var(--err)" : "var(--t3)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : <span style={{ fontSize: 11 }}>🟢 {T("Still in","داخل")}</span>}</td>
+                        <td style={{ color: "var(--t2)", fontSize: 12 }}>{hrs}</td>
+                        <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 22 ? a.location_label.substring(0,22)+"…" : a.location_label}</span> : "—"}</td>
                         <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
-                        <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" ? "yellow" : "red"}`}>{a.status}</span></td>
+                        <td><span className={`badge ${statusBadge}`}>{a.status}</span></td>
                         <td>{a.face_photo ? <img src={a.face_photo} alt="face" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
                       </tr>
                     );
