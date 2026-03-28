@@ -813,14 +813,14 @@ export default function App() {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
     const clockTime = new Date();
-    const isSaturday = clockTime.getDay() === 6;
+    const day = clockTime.getDay(); // 0=Sun, 5=Fri, 6=Sat
     const workMode = currentEmployee?.work_mode || "office";
-    console.log("🕐 Clock-in | Employee:", currentEmployee?.name, "| work_mode:", workMode, "| isSaturday:", isSaturday);
+    console.log("🕐 Clock-in | Employee:", currentEmployee?.name, "| work_mode:", workMode, "| day:", day);
 
-    // Camera is optional for: full remote (always) or hybrid on Saturdays
+    // Skip camera for: full remote (always) or hybrid on Friday/Saturday
     const skipCamera =
       workMode === "remote" ||
-      (workMode === "hybrid" && isSaturday);
+      (workMode === "hybrid" && (day === 5 || day === 6));
 
     // Step 1: GPS — always required for everyone
     setVerifying("gps");
@@ -921,9 +921,11 @@ export default function App() {
 
     // Camera — skip for remote and hybrid-saturday
     let outPhoto = null;
-    const outIsSat = new Date().getDay() === 6;
+    const outDay = new Date().getDay(); // 0=Sun, 5=Fri, 6=Sat
     const outWorkMode = currentEmployee?.work_mode || "office";
-    const outSkipCamera = outWorkMode === "remote" || (outWorkMode === "hybrid" && outIsSat);
+    const outSkipCamera =
+      outWorkMode === "remote" ||                                    // full remote → never camera
+      (outWorkMode === "hybrid" && (outDay === 5 || outDay === 6)); // hybrid → no camera Fri or Sat
     if (!outSkipCamera) {
       try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
     } else {
@@ -1310,7 +1312,7 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {[
                 { id: "office",  icon: "🏢", title: T("Office", "المكتب"),                  desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
-                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),                    desc: T("GPS always required. Camera on workdays (Sun–Thu) only. No camera on Saturdays", "GPS دائماً مطلوب. الكاميرا أيام العمل (أحد–خميس) فقط. بدون كاميرا السبت") },
+                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),                    desc: T("GPS always required. Camera on workdays (Sun–Thu) only. No camera on Fri & Sat", "GPS دائماً مطلوب. الكاميرا أيام العمل (أحد–خميس) فقط. بدون كاميرا الجمعة والسبت") },
                 { id: "remote",  icon: "🏠", title: T("Full Remote", "عمل من المنزل"), desc: T("GPS always required. No camera ever", "GPS دائماً مطلوب. بدون كاميرا نهائياً") },
               ].map(opt => {
                 const selected = (modalData.work_mode || "office") === opt.id;
@@ -1500,11 +1502,11 @@ export default function App() {
                 {/* Work mode badge */}
                 {(() => {
                   const wm = currentEmployee?.work_mode || "office";
-                  const isSat = new Date().getDay() === 6;
-                  const isRemoteToday = wm === "remote" || (wm === "hybrid" && isSat);
+                  const d = new Date().getDay();
+                  const isRemoteToday = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
                   if (isRemoteToday) return (
                     <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
-                      🏠 {wm === "remote" ? T("Full Remote Mode", "عمل من المنزل") : T("Saturday Remote", "سبت من المنزل")} — {T("GPS required, no camera", "GPS مطلوب، بدون كاميرا")}
+                      🏠 {wm === "remote" ? T("Full Remote Mode", "عمل من المنزل") : T("Hybrid — Fri/Sat Remote", "هجين — جمعة/سبت من المنزل")} — {T("GPS required, no camera", "GPS مطلوب، بدون كاميرا")}
                     </div>
                   );
                   return null;
@@ -1541,8 +1543,8 @@ export default function App() {
                   {/* Camera Photo Step — hidden for remote/hybrid-saturday */}
                   {(() => {
                     const wm = currentEmployee?.work_mode || "office";
-                    const isSat = new Date().getDay() === 6;
-                    const noCamera = wm === "remote" || (wm === "hybrid" && isSat);
+                    const d = new Date().getDay();
+                    const noCamera = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
                     if (noCamera) return (
                       <div className="verify-step" style={{ opacity: 0.5 }}>
                         <span className="verify-icon">⛔</span>
