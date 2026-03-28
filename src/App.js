@@ -2618,124 +2618,95 @@ export default function App() {
 
         {ssTab === "manage" && (
           <div>
-            {/* Role notice */}
-            <div className="info-box" style={{ marginBottom: 20, borderColor: "var(--acc)", background: "var(--accg)" }}>
-              {role === "accountant"
-                ? T("💰 As Accountant: you can view all requests. Loan payment activation is handled here.", "💰 كمحاسب: يمكنك عرض جميع الطلبات. تفعيل دفع القروض يتم من هنا.")
-                : T("👔 As Admin/HR: you can approve or reject all employee requests.", "👔 كمشرف/HR: يمكنك الموافقة أو رفض جميع طلبات الموظفين.")}
-            </div>
-
-            {/* Pending Excuses — Admin & HR only */}
-            {(role === "admin" || role === "hr") && (
-              <>
-                <div className="card-title" style={{ marginBottom: 16 }}>⏰ {T("Pending Excuse Requests", "طلبات الإذن المعلقة")} ({pendingEx.length})</div>
-                {pendingEx.length === 0
-                  ? <div className="info-box">{T("No pending excuse requests", "لا توجد طلبات إذن معلقة")}</div>
-                  : pendingEx.map((ex, i) => {
-                    const emp = employees.find(e => e.id === ex.employee_id);
-                    return (
-                      <div className="req-card" key={i}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{emp?.name} — {ex.type}</div>
-                          <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{ex.date} · {ex.from_time} → {ex.to_time}</div>
-                          <div style={{ fontSize: 13, color: "var(--t3)" }}>{ex.reason}</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <Btn size="sm" color="success" onClick={async () => { await db("excuse_requests", "PATCH", { status: "approved" }, `?id=eq.${ex.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
-                          <Btn size="sm" color="danger" onClick={async () => { await db("excuse_requests", "PATCH", { status: "rejected" }, `?id=eq.${ex.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </>
-            )}
-
-            {/* Pending Leaves — Admin & HR only */}
-            {(role === "admin" || role === "hr") && (
-              <>
-                <div className="card-title" style={{ margin: "24px 0 16px" }}>🏖️ {T("Pending Leave Requests", "طلبات الإجازة المعلقة")} ({pendingLv.length})</div>
-                {pendingLv.length === 0
-                  ? <div className="info-box">{T("No pending leave requests", "لا توجد طلبات إجازة معلقة")}</div>
-                  : pendingLv.map((lv, i) => {
-                    const emp = employees.find(e => e.id === lv.employee_id);
-                    return (
-                      <div className="req-card" key={i}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{emp?.name} — {lv.type} ({lv.days} {T("days", "أيام")})</div>
-                          <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{lv.start_date} → {lv.end_date}</div>
-                          <div style={{ fontSize: 13, color: "var(--t3)" }}>{lv.reason}</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <Btn size="sm" color="success" onClick={async () => { await db("leave_requests", "PATCH", { status: "approved" }, `?id=eq.${lv.id}`); loadAll(); }}>✅ {T("Approve", "موافقة")}</Btn>
-                          <Btn size="sm" color="danger" onClick={async () => { await db("leave_requests", "PATCH", { status: "rejected" }, `?id=eq.${lv.id}`); loadAll(); }}>❌ {T("Reject", "رفض")}</Btn>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </>
-            )}
-
-            {/* Pending Loans — Admin/HR approve, Accountant sees payment status */}
-            <div className="card-title" style={{ margin: "24px 0 16px" }}>💳 {T("Pending Loan Requests", "طلبات القروض المعلقة")} ({pendingLn.length})</div>
-            {role === "accountant" && (
-              <div className="info-box" style={{ borderColor: "var(--warn)", background: "var(--warnb)" }}>
-                ⚠️ {T("Loan approval is handled by Admin/HR. As Accountant, you can view status and mark payments in the Loans page.", "الموافقة على القروض من صلاحية المشرف/HR. كمحاسب يمكنك متابعة الحالة وتسجيل الدفع من صفحة القروض.")}
-              </div>
-            )}
-            {pendingLn.length === 0
-              ? <div className="info-box">{T("No pending loan requests", "لا توجد طلبات قروض معلقة")}</div>
-              : pendingLn.map((ln, i) => {
-                const emp = employees.find(e => e.id === ln.employee_id);
-                const canApprove = role === "admin" || role === "hr";
-                return (
-                  <div className="req-card" key={i}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{emp?.name} — {Number(ln.amount).toLocaleString()} EGP</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>📅 {ln.start_date} · 💸 {Number(ln.monthly_deduction).toLocaleString()} EGP/{T("month", "شهر")}</div>
-                      <div style={{ fontSize: 13, color: "var(--t3)" }}>📝 {ln.reason}</div>
-                    </div>
-                    {canApprove && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <Btn size="sm" color="success" onClick={async () => {
-                          const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-                          // Approve loan
-                          await db("loans", "PATCH", { status: "active", approved_by: currentEmployee?.name || "Admin" }, `?id=eq.${ln.id}`);
-                          
-                          // Find employee salary details
-                          const emp = employees.find(e => e.id === ln.employee_id);
-                          if (emp) {
-                            // Update current month payroll with loan deduction
-                            const curMonth = months[new Date().getMonth()];
-                            const curYear = new Date().getFullYear();
-                            const existingPay = payroll.find(p => p.employee_id === ln.employee_id && p.month === curMonth && p.year === curYear);
-                            const loanDed = Number(ln.monthly_deduction) || 0;
-                            
-                            if (existingPay) {
-                              const newNet = Number(existingPay.net_salary) - loanDed;
-                              await db("payroll", "PATCH", { loan_deduction: loanDed, net_salary: newNet }, `?id=eq.${existingPay.id}`);
-                            } else {
-                              const base = emp.salary||0;
-                              const net = base + (emp.allowances||0) + (emp.bonuses||0) - (emp.deductions||0) - (emp.tax||0) - (emp.insurance||0) - loanDed;
-                              await db("payroll", "POST", { employee_id: emp.id, month: curMonth, year: curYear, base_salary: base, allowances: emp.allowances||0, bonuses: emp.bonuses||0, deductions: emp.deductions||0, tax: emp.tax||0, insurance: emp.insurance||0, loan_deduction: loanDed, net_salary: net, status: "pending" });
-                            }
-                          }
-                          loadAll();
-                          alert(T(`✅ Loan approved! ${Number(ln.monthly_deduction).toLocaleString()} EGP will be deducted monthly from ${emp?.name}'s salary until settled.`, `✅ تمت الموافقة على القرض! سيتم خصم ${Number(ln.monthly_deduction).toLocaleString()} جنيه شهرياً من راتب ${emp?.name} حتى السداد.`));
-                        }}>✅ {T("Approve", "موافقة")}</Btn>
-                        <Btn size="sm" color="danger" onClick={async () => {
-                          await db("loans", "PATCH", { status: "rejected" }, `?id=eq.${ln.id}`);
-                          loadAll();
-                        }}>❌ {T("Reject", "رفض")}</Btn>
-                      </div>
-                    )}
-                    {!canApprove && (
-                      <span className="badge yellow">⏳ {T("Pending Admin Approval", "بانتظار موافقة المشرف")}</span>
-                    )}
+            {(() => {
+              const allExcuses = (role === "admin" || role === "hr") ? excuses : myExcuses;
+              const allLeaves  = (role === "admin" || role === "hr") ? leaveReqs : myLeaves;
+              const allLoans   = (role === "admin" || role === "hr" || role === "accountant") ? loans : [];
+              const allReqs = [
+                ...allExcuses.map(r => ({ ...r, _type: "excuse", _icon: "⏰", _label: T("Excuse","إذن") })),
+                ...allLeaves.map(r => ({ ...r, _type: "leave",  _icon: "🏖️", _label: T("Leave","إجازة") })),
+                ...allLoans.map(r =>  ({ ...r, _type: "loan",   _icon: "💰", _label: T("Loan","قرض") })),
+              ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+              const [reqFilter, setReqFilter] = React.useState("pending");
+              const filtered = reqFilter === "all" ? allReqs : allReqs.filter(r => reqFilter === "approved" ? (r.status === "approved" || r.status === "active") : r.status === reqFilter);
+              const counts = { all: allReqs.length, pending: allReqs.filter(r => r.status === "pending").length, approved: allReqs.filter(r => r.status === "approved" || r.status === "active").length, rejected: allReqs.filter(r => r.status === "rejected").length };
+              return (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                    {[
+                      { key: "pending",  label: T("⏳ Pending","⏳ معلق"),    color: "var(--warn)" },
+                      { key: "approved", label: T("✅ Approved","✅ موافق"),   color: "var(--ok)" },
+                      { key: "rejected", label: T("❌ Rejected","❌ مرفوض"),   color: "var(--err)" },
+                      { key: "all",      label: T("📋 All","📋 الكل"),         color: "var(--acc)" },
+                    ].map(f => (
+                      <button key={f.key} onClick={() => setReqFilter(f.key)}
+                        style={{ padding: "8px 16px", borderRadius: 20, border: `2px solid ${reqFilter === f.key ? f.color : "var(--border)"}`, background: reqFilter === f.key ? f.color : "var(--bg2)", color: reqFilter === f.key ? "white" : "var(--t2)", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
+                        {f.label} ({counts[f.key]})
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
+                  {filtered.length === 0
+                    ? <div className="info-box" style={{ textAlign: "center", padding: 40 }}>
+                        <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+                        <div>{T("No requests found","لا توجد طلبات")}</div>
+                      </div>
+                    : filtered.map((r, i) => {
+                      const emp = employees.find(e => e.id === r.employee_id);
+                      const isPending = r.status === "pending";
+                      const canAct = (role === "admin" || role === "hr") && isPending;
+                      return (
+                        <div key={i} className="req-card" style={{ marginBottom: 12, borderLeft: `3px solid ${r.status === "pending" ? "var(--warn)" : r.status === "approved" || r.status === "active" ? "var(--ok)" : "var(--err)"}` }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 18 }}>{r._icon}</span>
+                              <span style={{ fontWeight: 700, color: "var(--t1)", fontSize: 14 }}>{r._label}</span>
+                              {emp && <span style={{ fontSize: 13, color: "var(--acc)", fontWeight: 600 }}>— {emp.name} ({emp.employee_code})</span>}
+                              <span className={`badge ${r.status === "pending" ? "yellow" : r.status === "approved" || r.status === "active" ? "green" : "red"}`} style={{ fontSize: 11, marginLeft: "auto" }}>
+                                {r.status === "active" ? T("Active","نشط") : r.status}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--t3)", display: "flex", gap: 16, flexWrap: "wrap" }}>
+                              {r._type === "excuse" && <><span>📅 {r.date}</span><span>🕐 {r.from_time} → {r.to_time}</span><span>📝 {r.type}</span></>}
+                              {r._type === "leave"  && <><span>📅 {r.start_date} → {r.end_date}</span><span>🗓️ {r.days} {T("days","أيام")}</span><span>📝 {r.type}</span></>}
+                              {r._type === "loan"   && <><span>💵 {Number(r.amount||0).toLocaleString()} EGP</span><span>💸 {Number(r.monthly_deduction||0).toLocaleString()} EGP/{T("mo","شهر")}</span><span>📅 {r.start_date}</span></>}
+                              {r.reason && <span style={{ color: "var(--t2)" }}>"{r.reason}"</span>}
+                            </div>
+                          </div>
+                          {canAct && (
+                            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                              <Btn size="sm" color="success" onClick={async () => {
+                                if (r._type === "excuse") { await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
+                                else if (r._type === "leave") { await db("leave_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
+                                else if (r._type === "loan") {
+                                  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                                  await db("loans","PATCH",{status:"active",approved_by:currentEmployee?.name||"Admin"},`?id=eq.${r.id}`);
+                                  const curMonth = months[new Date().getMonth()]; const curYear = new Date().getFullYear();
+                                  const empData = employees.find(e => e.id === r.employee_id);
+                                  const existingPay = payroll.find(p => p.employee_id === r.employee_id && p.month === curMonth && p.year === curYear);
+                                  const loanDed = Number(r.monthly_deduction)||0;
+                                  if (existingPay) { await db("payroll","PATCH",{loan_deduction:loanDed,net_salary:Number(existingPay.net_salary)-loanDed},`?id=eq.${existingPay.id}`); }
+                                  else if (empData) { const net=(empData.salary||0)+(empData.allowances||0)+(empData.bonuses||0)-(empData.deductions||0)-(empData.tax||0)-(empData.insurance||0)-loanDed; await db("payroll","POST",{employee_id:empData.id,month:curMonth,year:curYear,base_salary:empData.salary||0,allowances:empData.allowances||0,bonuses:empData.bonuses||0,deductions:empData.deductions||0,tax:empData.tax||0,insurance:empData.insurance||0,loan_deduction:loanDed,net_salary:net,status:"pending"}); }
+                                  sendNotification("loan_approved",`✅ Loan approved for ${emp?.name} — ${Number(r.amount).toLocaleString()} EGP`);
+                                }
+                                loadAll();
+                              }}>✅ {T("Approve","موافقة")}</Btn>
+                              <Btn size="sm" color="danger" onClick={async () => {
+                                if (r._type === "excuse") await db("excuse_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                                else if (r._type === "leave") await db("leave_requests","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                                else if (r._type === "loan") await db("loans","PATCH",{status:"rejected"},`?id=eq.${r.id}`);
+                                loadAll();
+                              }}>❌ {T("Reject","رفض")}</Btn>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  }
+                </>
+              );
+            })()}
           </div>
-        )}
+        )}        )}
       </div>
     );
   };
