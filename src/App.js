@@ -806,6 +806,28 @@ function LoginPage({ lang, setLang, role, onLogin, onBack }) {
           style={{ background: roleInfo.color }}>
           {loading ? <><span className="spinner" />{T("Signing in...", "جاري الدخول...")}</> : T("Sign In", "تسجيل الدخول")}
         </button>
+        <div style={{ textAlign: "center", marginTop: 14 }}>
+          <button onClick={async () => {
+            if (!email) { alert(T("Please enter your email address first.", "يرجى إدخال بريدك الإلكتروني أولاً.")); return; }
+            try {
+              const res = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+                body: JSON.stringify({ email }),
+              });
+              if (res.ok) {
+                alert(T(`✅ Password reset email sent to ${email}\n\nCheck your inbox and follow the link to reset your password.`,
+                  `✅ تم إرسال رابط إعادة تعيين كلمة المرور إلى ${email}\n\nتحقق من بريدك الوارد واتبع الرابط.`));
+              } else {
+                alert(T("Could not send reset email. Please contact your admin.", "تعذر إرسال البريد. تواصل مع المشرف."));
+              }
+            } catch(e) {
+              alert(T("Error sending reset email. Contact admin.", "خطأ في الإرسال. تواصل مع المشرف."));
+            }
+          }} style={{ background: "none", border: "none", color: "var(--acc)", cursor: "pointer", fontSize: 13, fontFamily: "inherit", textDecoration: "underline" }}>
+            🔑 {T("Forgot Password?", "نسيت كلمة المرور؟")}
+          </button>
+        </div>
         <div className="login-lang">
           <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>English</button>
           <button className={lang === "ar" ? "active" : ""} onClick={() => setLang("ar")}>العربية</button>
@@ -1647,12 +1669,12 @@ export default function App() {
         {/* Add Employee Modal */}
         <Modal show={activeModal === "addEmployee"} onClose={closeModal} title={T("Add New Employee", "إضافة موظف جديد")}>
           <div className="form-row">
-            <div className="form-group"><label>{T("Full Name (English)", "الاسم الكامل بالإنجليزية")}</label><input value={modalData.name || ""} onChange={e => setModalData({ ...modalData, name: e.target.value })} /></div>
-            <div className="form-group"><label>{T("Full Name (Arabic)", "الاسم الكامل بالعربية")}</label><input value={modalData.name_ar || ""} onChange={e => setModalData({ ...modalData, name_ar: e.target.value })} /></div>
+            <div className="form-group"><label>{T("Full Name (English) *", "الاسم بالإنجليزية *")}</label><input value={modalData.name || ""} onChange={e => setModalData({ ...modalData, name: e.target.value })} placeholder="Mohamed Ahmed" /></div>
+            <div className="form-group"><label>{T("Full Name (Arabic)", "الاسم بالعربية")}</label><input value={modalData.name_ar || ""} onChange={e => setModalData({ ...modalData, name_ar: e.target.value })} placeholder="محمد أحمد" /></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>{T("Email", "البريد الإلكتروني")}</label><input type="email" value={modalData.email || ""} onChange={e => setModalData({ ...modalData, email: e.target.value })} /></div>
-            <div className="form-group"><label>{T("Phone", "الهاتف")}</label><input value={modalData.phone || ""} onChange={e => setModalData({ ...modalData, phone: e.target.value })} /></div>
+            <div className="form-group"><label>{T("Email *", "البريد الإلكتروني *")}</label><input type="email" value={modalData.email || ""} onChange={e => setModalData({ ...modalData, email: e.target.value })} placeholder="employee@company.com" /></div>
+            <div className="form-group"><label>{T("Phone", "الهاتف")}</label><input value={modalData.phone || ""} onChange={e => setModalData({ ...modalData, phone: e.target.value })} placeholder="+201XXXXXXXXX" /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>{T("Department", "القسم")}</label><input value={modalData.department || ""} onChange={e => setModalData({ ...modalData, department: e.target.value })} /></div>
@@ -1660,15 +1682,111 @@ export default function App() {
           </div>
           <div className="form-row">
             <div className="form-group"><label>{T("Base Salary (EGP)", "الراتب الأساسي")}</label><input type="number" value={modalData.salary || ""} onChange={e => setModalData({ ...modalData, salary: +e.target.value })} /></div>
-            <div className="form-group"><label>{T("Hire Date", "تاريخ التعيين")}</label><input type="date" value={modalData.hire_date || ""} onChange={e => setModalData({ ...modalData, hire_date: e.target.value })} /></div>
+            <div className="form-group"><label>{T("Hire Date", "تاريخ التعيين")}</label><input type="date" value={modalData.hire_date || ""} style={{ background: "#fff", color: "#1a2035" }} onChange={e => setModalData({ ...modalData, hire_date: e.target.value })} /></div>
           </div>
-          <div className="form-group">
-            <label>{T("Employee Type", "نوع الموظف")}</label>
-            <select value={modalData.employee_type || "office"} onChange={e => setModalData({ ...modalData, employee_type: e.target.value })}>
-              <option value="office">🏢 {T("Office (WFH Saturdays)", "مكتب (عمل من المنزل السبت)")}</option>
-              <option value="warehouse">🏭 {T("Warehouse (On-site always)", "مستودع (حضور دائم)")}</option>
-              <option value="retail">🛍️ {T("Retail / Mall of Egypt", "متجر / مول مصر")}</option>
-            </select>
+          <div className="form-row">
+            <div className="form-group">
+              <label>{T("Role", "الدور")}</label>
+              <select value={modalData.role || "employee"} onChange={e => setModalData({ ...modalData, role: e.target.value })}>
+                <option value="employee">🙋 {T("Employee", "موظف")}</option>
+                <option value="hr">👥 HR</option>
+                <option value="accountant">💰 {T("Accountant", "محاسب")}</option>
+                <option value="admin">🛡️ Admin</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>{T("Employee Type", "نوع الموظف")}</label>
+              <select value={modalData.employee_type || "office"} onChange={e => setModalData({ ...modalData, employee_type: e.target.value })}>
+                <option value="office">🏢 {T("Office", "مكتب")}</option>
+                <option value="warehouse">🏭 {T("Warehouse", "مستودع")}</option>
+                <option value="retail">🛍️ {T("Retail / Mall", "متجر / مول")}</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Password */}
+          <div style={{ background: "var(--okb)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 10, padding: 14, marginBottom: 4 }}>
+            <div style={{ fontWeight: 600, color: "var(--ok)", marginBottom: 10, fontSize: 13 }}>🔑 {T("Login Password", "كلمة مرور الدخول")}</div>
+            <div className="form-row">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>{T("Password *", "كلمة المرور *")}</label>
+                <div style={{ position: "relative" }}>
+                  <input type={modalData.showPw ? "text" : "password"} value={modalData.password || ""}
+                    onChange={e => setModalData({ ...modalData, password: e.target.value })}
+                    placeholder={T("Min 8 characters", "8 أحرف على الأقل")}
+                    style={{ paddingRight: 40 }} />
+                  <button type="button" onClick={() => setModalData({ ...modalData, showPw: !modalData.showPw })}
+                    style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "var(--t3)", padding: 0 }}>
+                    {modalData.showPw ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0, display: "flex", alignItems: "flex-end" }}>
+                <Btn color="outline" size="sm" type="button" onClick={() => {
+                  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#";
+                  const pw = Array.from({length: 10}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+                  setModalData({ ...modalData, password: pw, showPw: true });
+                }}>🎲 {T("Generate", "توليد")}</Btn>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 6 }}>
+              💡 {T("Share this password with the employee so they can log in. They can change it later.", "شارك كلمة المرور مع الموظف حتى يتمكن من الدخول.")}
+            </div>
+          </div>
+
+          <div className="form-actions">
+            <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+            <Btn color="primary" disabled={saving || !modalData.name || !modalData.email || !modalData.password || modalData.password.length < 8}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  // Check duplicate email
+                  const existing = await db("employees", "GET", null, `?email=eq.${encodeURIComponent(modalData.email)}&select=id`);
+                  if (existing && existing.length > 0) { alert(T("Email already registered.", "البريد مسجل مسبقاً.")); setSaving(false); return; }
+
+                  // Generate unique code
+                  const allCodes = await db("employees", "GET", null, "?select=employee_code");
+                  let maxNum = 0;
+                  (allCodes || []).forEach(e => { const m = (e.employee_code||"").match(/EMP(\d+)/); if(m) maxNum = Math.max(maxNum, parseInt(m[1],10)); });
+                  const code = "EMP" + String(maxNum + 1).padStart(3, "0");
+
+                  // Create Supabase Auth user
+                  const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+                    body: JSON.stringify({ email: modalData.email, password: modalData.password }),
+                  });
+                  const authData = await res.json();
+                  if (authData.error && !authData.access_token) {
+                    // Auth user might already exist — proceed anyway
+                    console.warn("Auth signup:", authData.error);
+                  }
+
+                  // Create employee record
+                  await db("employees", "POST", {
+                    employee_code: code,
+                    name: modalData.name.trim(),
+                    name_ar: modalData.name_ar || modalData.name.trim(),
+                    email: modalData.email,
+                    phone: modalData.phone || null,
+                    department: modalData.department || null,
+                    position: modalData.position || null,
+                    salary: modalData.salary || 0,
+                    hire_date: modalData.hire_date || null,
+                    role: modalData.role || "employee",
+                    employee_type: modalData.employee_type || "office",
+                    status: "active",
+                    avatar: modalData.name.trim().substring(0,2).toUpperCase(),
+                    temp_password: modalData.password,
+                  });
+
+                  await loadAll(); setSaving(false); closeModal();
+                  alert(T(`✅ Employee created!\nCode: ${code}\nEmail: ${modalData.email}\nPassword: ${modalData.password}\n\nShare these credentials with the employee.`,
+                    `✅ تم إنشاء الموظف!\nالكود: ${code}\nالبريد: ${modalData.email}\nكلمة المرور: ${modalData.password}\n\nشارك هذه البيانات مع الموظف.`));
+                } catch(e) { alert(T("Failed to create employee.", "فشل إنشاء الموظف.")); setSaving(false); }
+              }}>
+              {saving ? <span className="spinner" /> : `➕ ${T("Add Employee", "إضافة موظف")}`}
+            </Btn>
           </div>
         </Modal>
 
