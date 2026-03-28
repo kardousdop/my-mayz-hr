@@ -1209,11 +1209,11 @@ export default function App() {
 
     const filteredTodayAtt = todayAtt
       .filter(a => {
-        if (dashFilter === "present") return a.status === "present";
+        if (dashFilter === "present") return !!a.check_in; // anyone who signed in today
         if (dashFilter === "late") return a.status === "late" || a.status === "very_late";
         if (dashFilter === "incomplete") return a.status === "incomplete";
         if (dashFilter === "out") return !!a.check_out;
-        if (dashFilter === "still_in") return !a.check_out;
+        if (dashFilter === "still_in") return !!a.check_in && !a.check_out;
         return true;
       })
       .filter(a => {
