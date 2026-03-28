@@ -813,8 +813,10 @@ export default function App() {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
     const clockTime = new Date();
-    const day = clockTime.getDay(); // 0=Sun, 5=Fri, 6=Sat
-    const workMode = currentEmployee?.work_mode || "office";
+    const day = clockTime.getDay();
+    const workMode = currentEmployee?.work_mode
+      || employees.find(e => e.id === currentEmployee?.id)?.work_mode
+      || "office";
     console.log("🕐 Clock-in | Employee:", currentEmployee?.name, "| work_mode:", workMode, "| day:", day);
 
     // Skip camera for: full remote (always) or hybrid on Friday/Saturday
@@ -922,10 +924,13 @@ export default function App() {
     // Camera — skip for remote and hybrid-saturday
     let outPhoto = null;
     const outDay = new Date().getDay(); // 0=Sun, 5=Fri, 6=Sat
-    const outWorkMode = currentEmployee?.work_mode || "office";
+    const outWorkMode = currentEmployee?.work_mode
+      || employees.find(e => e.id === currentEmployee?.id)?.work_mode
+      || "office";
+    console.log("🚪 Clock-out | work_mode:", outWorkMode, "| day:", outDay);
     const outSkipCamera =
-      outWorkMode === "remote" ||                                    // full remote → never camera
-      (outWorkMode === "hybrid" && (outDay === 5 || outDay === 6)); // hybrid → no camera Fri or Sat
+      outWorkMode === "remote" ||
+      (outWorkMode === "hybrid" && (outDay === 5 || outDay === 6));
     if (!outSkipCamera) {
       try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
     } else {
@@ -1501,9 +1506,7 @@ export default function App() {
                 <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Clock In", "تسجيل الدخول")}</div>
                 {/* Work mode badge */}
                 {(() => {
-                  const wm = currentEmployee?.work_mode || "office";
-                  const d = new Date().getDay();
-                  const isRemoteToday = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
+                  const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
                   if (isRemoteToday) return (
                     <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
                       🏠 {wm === "remote" ? T("Full Remote Mode", "عمل من المنزل") : T("Hybrid — Fri/Sat Remote", "هجين — جمعة/سبت من المنزل")} — {T("GPS required, no camera", "GPS مطلوب، بدون كاميرا")}
@@ -1542,7 +1545,7 @@ export default function App() {
 
                   {/* Camera Photo Step — hidden for remote/hybrid-saturday */}
                   {(() => {
-                    const wm = currentEmployee?.work_mode || "office";
+                    const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
                     const d = new Date().getDay();
                     const noCamera = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
                     if (noCamera) return (
@@ -1596,13 +1599,27 @@ export default function App() {
                         <div>{clockOutGpsOk ? T("Exit Location Captured ✓", "تم تسجيل موقع الخروج ✓") : T("Capturing GPS...", "جاري تسجيل الموقع...")}</div>
                       </div>
                     </div>
-                    <div className={`verify-step ${clockOutPhotoOk ? "success" : ""}`}>
-                      <span className="verify-icon">{clockOutPhotoOk ? "✅" : clockOutVerifying ? "⏳" : "⭕"}</span>
-                      <div style={{ flex: 1, textAlign: "left" }}>
-                        <div>{clockOutPhotoOk ? T("📸 Exit Photo Captured ✓", "📸 تم التقاط صورة الخروج ✓") : T("Opening camera...", "جاري فتح الكاميرا...")}</div>
-                        {clockOutPhoto && <img src={clockOutPhoto} alt="out" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--err)" }} />}
-                      </div>
-                    </div>
+                    {(() => {
+                      const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
+                      const d = new Date().getDay();
+                      const noOutCamera = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
+                      if (noOutCamera) return (
+                        <div className="verify-step" style={{ opacity: 0.5 }}>
+                          <span className="verify-icon">⛔</span>
+                          <div style={{ flex: 1, textAlign: "left" }}>
+                            <div style={{ color: "var(--t3)" }}>{T("Camera — not required for your work mode", "الكاميرا — غير مطلوبة لنمط عملك")}</div>
+                          </div>
+                        </div>
+                      );
+                      return (
+                        <div className={`verify-step ${clockOutPhotoOk ? "success" : ""}`}>
+                          <span className="verify-icon">{clockOutPhotoOk ? "✅" : clockOutVerifying ? "⏳" : "⭕"}</span>
+                          <div style={{ flex: 1, textAlign: "left" }}>
+                            <div>{clockOutPhotoOk ? T("📸 Exit Photo Captured ✓", "📸 تم التقاط صورة الخروج ✓") : T("Opening camera...", "جاري فتح الكاميرا...")}</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
