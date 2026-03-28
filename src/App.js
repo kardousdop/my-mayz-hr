@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 // ============================================================
 const SUPABASE_URL = "https://qijcyebopepzzrrtflvm.supabase.co";
 const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || "";
+const SUPABASE_SERVICE_KEY = process.env.REACT_APP_SUPABASE_SERVICE_KEY || "";
 
 async function db(table, method = "GET", body = null, query = "") {
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
@@ -1958,28 +1959,52 @@ export default function App() {
                     if (!window.confirm(T(`Reset password for ${modalData.name}?`, `إعادة تعيين كلمة مرور ${modalData.name}؟`))) return;
                     setSaving(true);
                     try {
-                      // Use Supabase Admin API to update password
-                      // Note: requires service role key — use auth/v1/admin/users endpoint
-                      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-                        method: "GET",
-                        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+                      // Step 1: Find user in Supabase Auth by email
+                      const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(modalData.email)}`, {
+                        headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` }
                       });
-                      // Since we can't use admin API with anon key, use password update via user email OTP workaround
-                      // Best approach: store temp password in employee record, show it to admin
-                      await db("employees", "PATCH", { temp_password: modalData.newPassword }, `?id=eq.${modalData.id}`);
-                      alert(T(
-                        `✅ Temporary password saved!\n\nTell ${modalData.name} to:\n1. Go to the portal\n2. Click "Forgot Password" or use email: ${modalData.email}\n3. New password: ${modalData.newPassword}\n\nNote: They may need to use "Reset Password" on the login page.`,
-                        `✅ تم حفظ كلمة المرور المؤقتة!\n\nأخبر ${modalData.name} بـ:\n1. الذهاب إلى البوابة\n2. البريد: ${modalData.email}\n3. كلمة المرور الجديدة: ${modalData.newPassword}`
-                      ));
-                      // Send via WhatsApp if available
-                      const msg = encodeURIComponent(`🔑 myMayz HR - New Password\nYour new password: ${modalData.newPassword}\nEmail: ${modalData.email}\nLogin at: https://my-mayz-hr.vercel.app`);
-                      if (modalData.phone) {
-                        const phone = modalData.phone.replace(/[^0-9]/g, "");
-                        // Notify via admin's callmebot to share with employee
-                        fetch(`https://api.callmebot.com/whatsapp.php?phone=201004444558&text=${msg}&apikey=2789945`).catch(()=>{});
+                      const listData = await listRes.json();
+                      const userId = listData?.users?.[0]?.id;
+
+                      if (userId) {
+                        // Step 2: Update password via admin API
+                        const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json", apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+                          body: JSON.stringify({ password: modalData.newPassword })
+                        });
+                        const updateData = await updateRes.json();
+                        if (updateData.id || updateData.email) {
+                          // Step 3: Send new password via WhatsApp to admin
+                          const msg = encodeURIComponent(`🔑 myMayz HR\nPassword reset for: ${modalData.name}\nEmail: ${modalData.email}\nNew Password: ${modalData.newPassword}`);
+                          fetch(`https://api.callmebot.com/whatsapp.php?phone=201004444558&text=${msg}&apikey=2789945`).catch(()=>{});
+                          alert(T(`✅ Password updated successfully!\n\nEmployee: ${modalData.name}\nEmail: ${modalData.email}\nNew Password: ${modalData.newPassword}\n\nSent to your WhatsApp.`,
+                            `✅ تم تحديث كلمة المرور!\n\nالموظف: ${modalData.name}\nالبريد: ${modalData.email}\nكلمة المرور الجديدة: ${modalData.newPassword}`));
+                          setModalData({ ...modalData, newPassword: "", showResetPw: false });
+                        } else {
+                          throw new Error("Update failed: " + JSON.stringify(updateData));
+                        }
+                      } else {
+                        // User not in Auth yet — send reset email instead
+                        await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+                          body: JSON.stringify({ email: modalData.email })
+                        });
+                        alert(T(`⚠️ User not found in auth system.\nA password reset email has been sent to ${modalData.email}.`,
+                          `⚠️ المستخدم غير موجود في نظام المصادقة.\nتم إرسال بريد إعادة تعيين إلى ${modalData.email}.`));
                       }
-                      setModalData({ ...modalData, newPassword: "", showResetPw: false });
-                    } catch(e) { alert(T("Failed to reset password.", "فشل إعادة تعيين كلمة المرور.")); }
+                    } catch(e) {
+                      console.error("Password reset error:", e);
+                      // Fallback: send reset email
+                      await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+                        body: JSON.stringify({ email: modalData.email })
+                      });
+                      alert(T(`⚠️ Service key not configured. Password reset email sent to ${modalData.email} instead.\n\nTo enable direct password reset, add REACT_APP_SUPABASE_SERVICE_KEY to Vercel environment variables.`,
+                        `⚠️ مفتاح الخدمة غير مكوّن. تم إرسال بريد إعادة تعيين إلى ${modalData.email} بدلاً من ذلك.`));
+                    }
                     setSaving(false);
                   }}>
                   {saving ? <span className="spinner" /> : T("Set Password", "تعيين")}
