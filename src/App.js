@@ -1778,6 +1778,9 @@ export default function App() {
                             {a.notes && <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes}</td>}
                             <td>{(role === "admin" || role === "hr") ? (a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—") : null}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—") : null}</td>
+                            {role === "admin" && (
+                              <td><Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this record?","حذف هذا السجل؟"))){ await db("attendance","DELETE",null,`?id=eq.${a.id}`); loadAll(); }}}>🗑️</Btn></td>
+                            )}
                           </tr>
                         );
                       })}
@@ -2553,6 +2556,19 @@ export default function App() {
         </div>
         <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
           <Btn color="outline" onClick={loadAll}>🔄 {T("Refresh All Data", "تحديث كل البيانات")}</Btn>
+          <Btn color="warning" onClick={async () => {
+            // Run database migrations via Supabase RPC
+            try {
+              // Check if work_mode column exists by trying to read it
+              const test = await db("employees", "GET", null, "?select=work_mode&limit=1");
+              if (test && !test.error) {
+                alert(T("✅ Database is up to date. work_mode column exists.", "✅ قاعدة البيانات محدثة. عمود work_mode موجود."));
+              }
+            } catch(e) {
+              alert(T("⚠️ work_mode column missing. Please run URGENT_run_this_sql.sql in Supabase SQL Editor.", "⚠️ عمود work_mode غير موجود. يرجى تشغيل ملف URGENT_run_this_sql.sql في Supabase SQL Editor."));
+            }
+            await loadAll();
+          }}>🔧 {T("Check DB Columns", "فحص أعمدة قاعدة البيانات")}</Btn>
           <Btn color="danger" onClick={handleLogout}>🚪 {T("Logout", "تسجيل الخروج")}</Btn>
         </div>
       </div>
