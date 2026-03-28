@@ -725,6 +725,29 @@ export default function App() {
   const [clockOutVerifying, setClockOutVerifying] = useState(false);
   const [signup, setSignup] = useState(false);
 
+  // Notification settings — stored in localStorage
+  const [notifSettings, setNotifSettings] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("mymayz_notif") || JSON.stringify({
+        enabled: true,
+        brevoKey: "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",
+        recipients: [
+          { name: "Ahmed Kardous", role: "Admin",      email: "hello@mymayz.com",       whatsapp: "201004444558", whatsappKey: "2789945", active: true },
+          { name: "Accountant",    role: "Accountant", email: "accountant@chefmay.com", whatsapp: "",             whatsappKey: "",        active: true },
+          { name: "Mahmoud",       role: "HR",         email: "mahmoud@chefmay.com",    whatsapp: "",             whatsappKey: "",        active: true },
+        ],
+        events: {
+          signin:         { on: false, label: "Employee Sign In",       icon: "✅", warn: true },
+          signout:        { on: false, label: "Employee Sign Out",      icon: "🚪", warn: true },
+          excuse_request: { on: true,  label: "Excuse Request",         icon: "⏰", warn: false },
+          leave_request:  { on: true,  label: "Leave Request",          icon: "🏖️", warn: false },
+          loan_request:   { on: true,  label: "Loan Request",           icon: "💰", warn: false },
+          loan_approved:  { on: true,  label: "Loan Approved/Rejected", icon: "🎉", warn: false },
+        }
+      }));
+    } catch { return { enabled: false, recipients: [], events: {} }; }
+  });
+
   const ar = lang === "ar";
   const T = (en, a) => ar ? a : en;
 
@@ -862,9 +885,58 @@ export default function App() {
     localStorage.removeItem("mymayz_session");
   };
 
-  // ============================================================
-  // CLOCK IN / OUT
-  // ============================================================
+  // ── Notification System ──
+  const saveNotifSettings = (newSettings) => {
+    setNotifSettings(newSettings);
+    localStorage.setItem("mymayz_notif", JSON.stringify(newSettings));
+  };
+
+  const sendNotification = async (eventType, message) => {
+    const settings = JSON.parse(localStorage.getItem("mymayz_notif") || "{}");
+    if (!settings.enabled) return;
+    const event = settings.events?.[eventType];
+    if (!event?.on) return;
+
+    const activeRecipients = (settings.recipients || []).filter(r => r.active);
+
+    for (const recipient of activeRecipients) {
+      // ── WhatsApp via CallMeBot (free) ──
+      if (recipient.whatsapp && recipient.whatsappKey) {
+        const phone = recipient.whatsapp.replace(/[^0-9]/g, "");
+        const text = encodeURIComponent(`🔔 *myMayz HR*\n${message}`);
+        fetch(`https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${text}&apikey=${recipient.whatsappKey}`)
+          .catch(() => {});
+      }
+
+      // ── Email via Brevo (free 300/day) ──
+      if (recipient.email && settings.brevoKey) {
+        fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": settings.brevoKey,
+          },
+          body: JSON.stringify({
+            sender: { name: "myMayz HR", email: "hello@mymayz.com" },
+            to: [{ email: recipient.email, name: recipient.name }],
+            subject: `🔔 myMayz HR — ${event.label}`,
+            htmlContent: `
+              <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px;background:#f5f5f5;border-radius:12px;">
+                <div style="background:#1a2035;border-radius:8px;padding:20px;text-align:center;margin-bottom:20px;">
+                  <h2 style="color:white;margin:0;">my<span style="color:#6366f1">Mayz</span> HR</h2>
+                </div>
+                <div style="background:white;border-radius:8px;padding:20px;">
+                  <p style="font-size:16px;color:#333;">${message}</p>
+                  <hr style="border:1px solid #eee;margin:16px 0"/>
+                  <p style="font-size:12px;color:#999;">myMayz HR Notification System · ${new Date().toLocaleString()}</p>
+                </div>
+              </div>
+            `
+          })
+        }).catch(() => {});
+      }
+    }
+  };
   const handleClockIn = async () => {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
@@ -952,6 +1024,8 @@ export default function App() {
     setClockedIn(true); setClockInTime(clockTime); setLocLabel(label);
     setVerifying(null);
     await loadAll();
+    // Send sign-in notification
+    sendNotification("signin", `✅ ${currentEmployee?.name || "Employee"} signed in at ${clockTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${label || "Office"}`);
   };
 
   const handleClockOut = async () => {
@@ -1019,6 +1093,7 @@ export default function App() {
     setClockedIn(false); setClockInTime(null); setGpsOk(false); setPhotoOk(false); setPhoto(null); setLocLabel(null);
     setClockOutVerifying(false); setClockOutDone(true);
     await loadAll();
+    sendNotification("signout", `🚪 ${currentEmployee?.name || "Employee"} signed out at ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`);
   };
 
   // ============================================================
@@ -1393,6 +1468,21 @@ export default function App() {
               })}
             </div>
           </div>
+          {/* Shift Assignment */}
+          <div className="form-group">
+            <label>🕐 {T("Assigned Shift", "المناوبة المعينة")}</label>
+            <select
+              value={modalData.assigned_shift_id || empShifts.find(es => es.employee_id === modalData.id)?.shift_id || ""}
+              onChange={e => setModalData({ ...modalData, assigned_shift_id: e.target.value })}>
+              <option value="">{T("No shift assigned", "بدون مناوبة")}</option>
+              {shifts.map(s => (
+                <option key={s.id} value={s.id}>
+                  {ar ? s.name_ar : s.name} ({s.start_time} → {s.end_time})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="form-actions">
             <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
             <Btn color="primary" disabled={saving} onClick={async () => {
@@ -1413,6 +1503,13 @@ export default function App() {
                 payment_mobile: modalData.payment_mobile || null,
                 work_mode: modalData.work_mode || "office",
               }, `?id=eq.${modalData.id}`);
+              // Update shift assignment
+              if (modalData.assigned_shift_id !== undefined) {
+                await db("employee_shifts", "DELETE", null, `?employee_id=eq.${modalData.id}`);
+                if (modalData.assigned_shift_id) {
+                  await db("employee_shifts", "POST", { employee_id: modalData.id, shift_id: Number(modalData.assigned_shift_id) });
+                }
+              }
               await loadAll(); setSaving(false); closeModal();
             }}>{saving ? <span className="spinner" /> : T("Save Changes", "حفظ التغييرات")}</Btn>
           </div>
@@ -2457,7 +2554,7 @@ export default function App() {
             <div className="form-actions">
               <Btn color="primary" disabled={saving || !modalData.date || !modalData.type || !modalData.reason} onClick={async () => {
                 setSaving(true);
-                await db("excuse_requests", "POST", { ...modalData, employee_id: myId, status: "pending" });
+                await db("excuse_requests", "POST", { ...modalData, employee_id: myId, status: "pending" }); sendNotification("excuse_request", `⏰ ${myEmp?.name} submitted an excuse request: ${modalData.type} on ${modalData.date}`);
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Request", "📨 إرسال الطلب")}</Btn>
             </div>
@@ -2489,7 +2586,7 @@ export default function App() {
               <Btn color="primary" disabled={saving || !modalData.type || !modalData.start_date || !modalData.end_date} onClick={async () => {
                 setSaving(true);
                 const days = Math.max(1, Math.ceil((new Date(modalData.end_date) - new Date(modalData.start_date)) / 86400000) + 1);
-                await db("leave_requests", "POST", { ...modalData, employee_id: myId, days, status: "pending" });
+                await db("leave_requests", "POST", { ...modalData, employee_id: myId, days, status: "pending" }); sendNotification("leave_request", `🏖️ ${myEmp?.name} requested ${days} day(s) leave: ${modalData.type}`);
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Request", "📨 إرسال الطلب")}</Btn>
             </div>
@@ -2512,7 +2609,7 @@ export default function App() {
             <div className="form-actions">
               <Btn color="primary" disabled={saving || myLoans.length > 0 || !modalData.amount || !modalData.monthly_deduction || !modalData.reason} onClick={async () => {
                 setSaving(true);
-                await db("loans", "POST", { ...modalData, employee_id: myId, status: "pending" });
+                await db("loans", "POST", { ...modalData, employee_id: myId, status: "pending" }); sendNotification("loan_request", `💰 ${myEmp?.name} requested a loan of ${modalData.amount} EGP`);
                 await loadAll(); setSaving(false); setModalData({}); setSsTab("overview");
               }}>{saving ? <span className="spinner" /> : T("📨 Submit Loan Request", "📨 إرسال طلب القرض")}</Btn>
             </div>
@@ -2698,7 +2795,124 @@ export default function App() {
         </div>
       </div>
 
-      {/* Approved Locations Config */}
+      {/* Notification Settings */}
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div className="card-title">🔔 {T("Notification Settings", "إعدادات الإشعارات")}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, color: "var(--t3)" }}>{notifSettings.enabled ? T("On","مفعل") : T("Off","معطل")}</span>
+            <div style={{ width: 44, height: 24, background: notifSettings.enabled ? "var(--ok)" : "var(--border)", borderRadius: 12, position: "relative", cursor: "pointer", transition: "all 0.2s" }}
+              onClick={() => saveNotifSettings({ ...notifSettings, enabled: !notifSettings.enabled })}>
+              <div style={{ width: 18, height: 18, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: notifSettings.enabled ? 23 : 3, transition: "all 0.2s" }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Email API Key (Brevo) */}
+        <div className="form-group" style={{ marginBottom: 16 }}>
+          <label>
+            📧 {T("Brevo API Key (for Email)", "مفتاح Brevo (للبريد الإلكتروني)")}
+            <span style={{ fontSize: 11, color: "var(--t3)", marginLeft: 6 }}>
+              — {T("Free 300 emails/day", "مجاني 300 إيميل/يوم")} ·
+              <a href="https://brevo.com" target="_blank" rel="noreferrer" style={{ color: "var(--acc)", marginLeft: 4 }}>brevo.com</a>
+              {T(" → Sign up → Settings → API Keys → Create Key", " → سجل → إعدادات → API Keys → Create Key")}
+            </span>
+          </label>
+          <input value={notifSettings.brevoKey || ""} placeholder="xkeysib-..."
+            onChange={e => saveNotifSettings({ ...notifSettings, brevoKey: e.target.value })}
+            style={{ fontFamily: "monospace", fontSize: 12 }} />
+        </div>
+
+        {/* Recipients Table */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 12 }}>
+            👥 {T("Recipients", "المستلمون")}
+            <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400, marginLeft: 8 }}>{T("Each person must activate CallMeBot once to receive WhatsApp", "كل شخص يفعّل CallMeBot مرة واحدة لاستقبال واتساب")}</span>
+          </div>
+          {(notifSettings.recipients || []).map((r, i) => (
+            <div key={i} style={{ background: r.active ? "var(--bg2)" : "var(--card)", border: `1px solid ${r.active ? "var(--border)" : "var(--border)"}`, borderRadius: 10, padding: 14, marginBottom: 10, opacity: r.active ? 1 : 0.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <span style={{ fontWeight: 700, color: "var(--t1)", fontSize: 14 }}>{r.name}</span>
+                  <span className="badge blue" style={{ fontSize: 10, marginLeft: 8 }}>{r.role}</span>
+                </div>
+                <div style={{ width: 36, height: 20, background: r.active ? "var(--ok)" : "var(--border)", borderRadius: 10, position: "relative", cursor: "pointer", transition: "all 0.2s", flexShrink: 0 }}
+                  onClick={() => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, active: !r.active }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}>
+                  <div style={{ width: 14, height: 14, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: r.active ? 19 : 3, transition: "all 0.2s" }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 3 }}>📧 Email</label>
+                  <input value={r.email || ""} placeholder="email@company.com"
+                    onChange={e => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, email: e.target.value }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}
+                    style={{ width: "100%", padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, outline: "none" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 3 }}>📱 WhatsApp (+20...)</label>
+                  <input value={r.whatsapp || ""} placeholder="201XXXXXXXXX"
+                    onChange={e => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, whatsapp: e.target.value }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}
+                    style={{ width: "100%", padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, outline: "none" }} />
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 3 }}>
+                    🔑 {T("CallMeBot API Key (for WhatsApp)", "مفتاح CallMeBot (للواتساب)")}
+                    <span style={{ color: "var(--t3)", fontWeight: 400 }}> — {T("Get from", "احصل منه من")} </span>
+                    <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noreferrer" style={{ color: "var(--acc)" }}>callmebot.com</a>
+                    <span style={{ color: "var(--t3)", fontWeight: 400 }}>{T(" (each person gets their own key)", " (كل شخص يحصل على مفتاحه الخاص)")}</span>
+                  </label>
+                  <input value={r.whatsappKey || ""} placeholder="e.g. 1234567"
+                    onChange={e => { const recs = [...notifSettings.recipients]; recs[i] = { ...r, whatsappKey: e.target.value }; saveNotifSettings({ ...notifSettings, recipients: recs }); }}
+                    style={{ width: "100%", padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "monospace", fontSize: 12, outline: "none" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+          <Btn color="outline" size="sm" onClick={() => saveNotifSettings({ ...notifSettings, recipients: [...(notifSettings.recipients||[]), { name: "New Person", role: "Staff", email: "", whatsapp: "", whatsappKey: "", active: true }] })}>
+            ➕ {T("Add Recipient", "إضافة مستلم")}
+          </Btn>
+        </div>
+
+        {/* Event Toggles */}
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 12 }}>
+          📋 {T("Notify when:", "أرسل إشعار عند:")}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {Object.entries(notifSettings.events || {}).map(([key, ev]) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: ev.on ? "var(--okb)" : "var(--bg2)", border: `1px solid ${ev.on ? "var(--ok)" : "var(--border)"}`, borderRadius: 8, transition: "all 0.15s" }}>
+              <div>
+                <span style={{ fontSize: 16, marginRight: 8 }}>{ev.icon}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)" }}>{ev.label}</span>
+                {ev.warn && <span style={{ fontSize: 11, color: "var(--warn)", marginLeft: 8 }}>({T("high frequency", "تكرار عالي")})</span>}
+              </div>
+              <div style={{ width: 44, height: 24, background: ev.on ? "var(--ok)" : "var(--border)", borderRadius: 12, position: "relative", cursor: "pointer", transition: "all 0.2s", flexShrink: 0 }}
+                onClick={() => saveNotifSettings({ ...notifSettings, events: { ...notifSettings.events, [key]: { ...ev, on: !ev.on } } })}>
+                <div style={{ width: 18, height: 18, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: ev.on ? 23 : 3, transition: "all 0.2s" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Test button */}
+        <div style={{ marginTop: 16 }}>
+          <Btn color="outline" onClick={() => sendNotification("leave_request", "🧪 This is a test notification from myMayz HR System")}>
+            🧪 {T("Send Test Notification", "إرسال إشعار تجريبي")}
+          </Btn>
+        </div>
+      </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div className="card-title">🔔 {T("Notification Settings", "إعدادات الإشعارات")}</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <div style={{ width: 44, height: 24, background: notifSettings.enabled ? "var(--ok)" : "var(--border)", borderRadius: 12, position: "relative", transition: "all 0.2s", cursor: "pointer" }}
+              onClick={() => saveNotifSettings({ ...notifSettings, enabled: !notifSettings.enabled })}>
+              <div style={{ width: 18, height: 18, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: notifSettings.enabled ? 23 : 3, transition: "all 0.2s" }} />
+            </div>
+            <span style={{ fontSize: 13, color: notifSettings.enabled ? "var(--ok)" : "var(--t3)" }}>
+              {notifSettings.enabled ? T("Enabled", "مفعل") : T("Disabled", "معطل")}
+            </span>
+          </label>
+        </div>
+
       <div className="card">
         <div className="card-title" style={{ marginBottom: 16 }}>📍 {T("Approved GPS Locations", "مواقع العمل المعتمدة")}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
