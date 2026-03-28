@@ -915,13 +915,20 @@ export default function App() {
     setClockOutPhoto(null);
     setClockOutDone(false);
 
-    // GPS
+    // GPS — always required
     let outLoc = null;
     try { outLoc = await getGPS(); setClockOutGpsOk(true); } catch(e) {}
 
-    // Camera
+    // Camera — skip for remote and hybrid-saturday
     let outPhoto = null;
-    try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
+    const outIsSat = new Date().getDay() === 6;
+    const outWorkMode = currentEmployee?.work_mode || "office";
+    const outSkipCamera = outWorkMode === "remote" || (outWorkMode === "hybrid" && outIsSat);
+    if (!outSkipCamera) {
+      try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
+    } else {
+      setClockOutPhotoOk(true);
+    }
 
     // Save clock out - always fetch fresh from DB to find today's open record
     const clockTime = new Date();
@@ -1521,7 +1528,7 @@ export default function App() {
                 }
 
                 <div className="verify-steps">
-                  {/* GPS Step */}
+                  {/* GPS Step — always shown */}
                   <div className={`verify-step ${gpsErr ? "error" : gpsOk ? "success" : ""}`}>
                     <span className="verify-icon">{gpsOk ? "✅" : gpsErr ? "❌" : verifying === "gps" ? "⏳" : "⭕"}</span>
                     <div style={{ flex: 1, textAlign: "left" }}>
@@ -1531,15 +1538,31 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Camera Photo Step */}
-                  <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
-                    <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
-                    <div style={{ flex: 1, textAlign: "left" }}>
-                      <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("Camera Error", "خطأ الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
-                      {photoErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{photoErr}</div>}
-                      {photo && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
-                    </div>
-                  </div>
+                  {/* Camera Photo Step — hidden for remote/hybrid-saturday */}
+                  {(() => {
+                    const wm = currentEmployee?.work_mode || "office";
+                    const isSat = new Date().getDay() === 6;
+                    const noCamera = wm === "remote" || (wm === "hybrid" && isSat);
+                    if (noCamera) return (
+                      <div className="verify-step" style={{ opacity: 0.5 }}>
+                        <span className="verify-icon">⛔</span>
+                        <div style={{ flex: 1, textAlign: "left" }}>
+                          <div style={{ color: "var(--t3)" }}>{T("Camera — not required for your work mode", "الكاميرا — غير مطلوبة لنمط عملك")}</div>
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
+                        <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
+                        <div style={{ flex: 1, textAlign: "left" }}>
+                          <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("Camera Error", "خطأ الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
+                          {photoErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{photoErr}</div>}
+                          {/* Photo only visible to admin/hr — never shown to employee */}
+                          {photo && (role === "admin" || role === "hr") && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {(gpsErr || photoErr) && !clockedIn && (
@@ -1710,8 +1733,8 @@ export default function App() {
                     <th>{T("Location", "الموقع")}</th>
                     <th>{T("In GPS", "GPS دخول")}</th>
                     <th>{T("Status", "الحالة")}</th>
-                    <th>{T("In Photo", "صورة دخول")}</th>
-                    <th>{T("Out Photo", "صورة خروج")}</th>
+                    {(role === "admin" || role === "hr") && <th>{T("In Photo", "صورة دخول")}</th>}
+                    {(role === "admin" || role === "hr") && <th>{T("Out Photo", "صورة خروج")}</th>}
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0
@@ -1734,8 +1757,8 @@ export default function App() {
                             <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
                             <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
                             {a.notes && <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes}</td>}
-                            <td>{a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
-                            <td>{a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—"}</td>
+                            <td>{(role === "admin" || role === "hr") ? (a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—") : null}</td>
+                            <td>{(role === "admin" || role === "hr") ? (a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—") : null}</td>
                           </tr>
                         );
                       })}
