@@ -2583,15 +2583,19 @@ export default function App() {
         <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
           <Btn color="outline" onClick={loadAll}>🔄 {T("Refresh All Data", "تحديث كل البيانات")}</Btn>
           <Btn color="warning" onClick={async () => {
-            // Run database migrations via Supabase RPC
             try {
-              // Check if work_mode column exists by trying to read it
-              const test = await db("employees", "GET", null, "?select=work_mode&limit=1");
-              if (test && !test.error) {
-                alert(T("✅ Database is up to date. work_mode column exists.", "✅ قاعدة البيانات محدثة. عمود work_mode موجود."));
+              // Try to read work_mode — if it fails, column is missing
+              const test = await fetch(`${SUPABASE_URL}/rest/v1/employees?select=work_mode&limit=1`, {
+                headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+              });
+              const data = await test.json();
+              if (Array.isArray(data) && !data.error) {
+                alert(T("✅ work_mode column exists! Go to Employees → Edit any employee to set their work mode.", "✅ عمود work_mode موجود! اذهب إلى الموظفون → تعديل لضبط نمط العمل."));
+              } else {
+                alert(T("❌ work_mode column MISSING.\n\nPlease open Supabase → SQL Editor → New Query → paste and run:\n\nALTER TABLE employees ADD COLUMN IF NOT EXISTS work_mode TEXT DEFAULT 'office';", "❌ عمود work_mode غير موجود.\n\nيرجى فتح Supabase → SQL Editor → New Query → نسخ وتشغيل:\n\nALTER TABLE employees ADD COLUMN IF NOT EXISTS work_mode TEXT DEFAULT 'office';"));
               }
             } catch(e) {
-              alert(T("⚠️ work_mode column missing. Please run URGENT_run_this_sql.sql in Supabase SQL Editor.", "⚠️ عمود work_mode غير موجود. يرجى تشغيل ملف URGENT_run_this_sql.sql في Supabase SQL Editor."));
+              alert(T("❌ Database check failed. Please run the SQL manually in Supabase.", "❌ فشل فحص قاعدة البيانات. يرجى تشغيل SQL يدوياً في Supabase."));
             }
             await loadAll();
           }}>🔧 {T("Check DB Columns", "فحص أعمدة قاعدة البيانات")}</Btn>
