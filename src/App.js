@@ -791,6 +791,9 @@ export default function App() {
   const [attTab, setAttTab] = useState("clockin");
   const [ssTab, setSsTab] = useState("overview");
   const [reqFilter, setReqFilter] = useState("pending");
+  const [dashFilter, setDashFilter] = useState("all");
+  const [dashSort, setDashSort] = useState("checkin_desc");
+  const [dashEmpSearch, setDashEmpSearch] = useState("");
   const todayStr = new Date().toISOString().split("T")[0];
   const [reportFilter, setReportFilter] = useState({ from: todayStr, to: todayStr, emp: "", status: "", sort: "desc", month: "" });
   const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
@@ -1202,10 +1205,6 @@ export default function App() {
       .sort((a, b) => new Date(b.check_in || 0) - new Date(a.check_in || 0));
     const pending = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length;
     const totalPayroll = employees.reduce((s, e) => s + (Number(e.salary) || 0), 0);
-
-    const [dashFilter, setDashFilter] = useState("all");
-    const [dashSort, setDashSort] = useState("checkin_desc");
-    const [dashEmpSearch, setDashEmpSearch] = useState("");
 
     const filteredTodayAtt = todayAtt
       .filter(a => {
