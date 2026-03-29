@@ -1419,10 +1419,11 @@ export default function App() {
                 <th>{T("GPS","GPS")}</th>
                 <th>{T("Status","الحالة")}</th>
                 <th>{T("Photo","صورة")}</th>
+                {role === "admin" && <th>{T("Action","إجراء")}</th>}
               </tr></thead>
               <tbody>
                 {filteredTodayAtt.length === 0
-                  ? <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>
+                  ? <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--t3)", padding: 32 }}>
                       {dashFilter !== "all" ? T("No records match this filter","لا توجد سجلات لهذا الفلتر") : T("No attendance recorded today","لا يوجد حضور اليوم")}
                     </td></tr>
                   : filteredTodayAtt.map((a, i) => {
@@ -1447,6 +1448,35 @@ export default function App() {
                         <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
                         <td><span className={`badge ${statusBadge}`}>{a.status}</span></td>
                         <td>{a.face_photo ? <img src={a.face_photo} alt="face" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
+                        {role === "admin" && (
+                          <td>
+                            {a.check_in && !a.check_out ? (
+                              <Btn size="sm" color="warning"
+                                title={T("Manually sign out this employee","تسجيل خروج يدوي")}
+                                onClick={async () => {
+                                  const now = new Date();
+                                  const hours = Math.round(((now - new Date(a.check_in)) / 3600000) * 100) / 100;
+                                  const es = empShifts.find(x => x.employee_id === a.employee_id);
+                                  const sh = es ? shifts.find(s => s.id === es.shift_id) : null;
+                                  const incomplete = hours < (sh?.min_hours || 8);
+                                  if (window.confirm(T(
+                                    `Sign out ${emp?.name}?\nTime: ${now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}\nWorked: ${hours.toFixed(1)}h`,
+                                    `تسجيل خروج ${emp?.name}؟\nالوقت: ${now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}\nساعات العمل: ${hours.toFixed(1)}`
+                                  ))) {
+                                    await db("attendance","PATCH",{
+                                      check_out: now.toISOString(),
+                                      hours_worked: hours,
+                                      status: incomplete ? "incomplete" : a.status,
+                                      notes: `Manual sign-out by admin at ${now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`,
+                                    },`?id=eq.${a.id}`);
+                                    loadAll();
+                                  }
+                                }}>
+                                🚪 {T("Sign Out","خروج")}
+                              </Btn>
+                            ) : <span style={{ fontSize: 11, color: "var(--t3)" }}>—</span>}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -2474,7 +2504,7 @@ export default function App() {
                     <th>{T("Notes", "ملاحظات")}</th>
                     {(role === "admin" || role === "hr") && <th>{T("In Photo", "صورة دخول")}</th>}
                     {(role === "admin" || role === "hr") && <th>{T("Out Photo", "صورة خروج")}</th>}
-                    {role === "admin" && <th>{T("Del", "حذف")}</th>}
+                    {role === "admin" && <th>{T("Actions", "إجراءات")}</th>}
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0
@@ -2500,7 +2530,39 @@ export default function App() {
                             <td>{(role === "admin" || role === "hr") ? (a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—") : null}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—") : null}</td>
                             {role === "admin" && (
-                              <td><Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this record?","حذف هذا السجل؟"))){ await db("attendance","DELETE",null,`?id=eq.${a.id}`); loadAll(); }}}>🗑️</Btn></td>
+                              <td>
+                                <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
+                                  {/* Manual Sign-Out button — only for records with no checkout */}
+                                  {a.check_in && !a.check_out && (
+                                    <Btn size="sm" color="warning" onClick={async () => {
+                                      const now = new Date();
+                                      const checkInTime = new Date(a.check_in);
+                                      const hours = Math.round(((now - checkInTime) / 3600000) * 100) / 100;
+                                      const incomplete = hours < (shift?.min_hours || 8);
+                                      if (window.confirm(T(
+                                        `Manually sign out ${emp?.name}?\nWorked: ${hours.toFixed(1)}h\nSign-out time: ${now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`,
+                                        `تسجيل خروج ${emp?.name} يدوياً؟\nساعات العمل: ${hours.toFixed(1)}\nوقت الخروج: ${now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`
+                                      ))) {
+                                        await db("attendance", "PATCH", {
+                                          check_out: now.toISOString(),
+                                          hours_worked: hours,
+                                          status: incomplete ? "incomplete" : a.status,
+                                          notes: `Manual sign-out by admin at ${now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}${incomplete ? ` — ${hours.toFixed(1)}h worked (min ${shift?.min_hours || 8}h)` : ""}`,
+                                        }, `?id=eq.${a.id}`);
+                                        loadAll();
+                                      }
+                                    }} title={T("Manual Sign Out", "تسجيل خروج يدوي")}>
+                                      🚪
+                                    </Btn>
+                                  )}
+                                  <Btn size="sm" color="danger" onClick={async () => {
+                                    if (window.confirm(T("Delete this record?", "حذف هذا السجل؟"))) {
+                                      await db("attendance", "DELETE", null, `?id=eq.${a.id}`);
+                                      loadAll();
+                                    }
+                                  }} title={T("Delete", "حذف")}>🗑️</Btn>
+                                </div>
+                              </td>
                             )}
                           </tr>
                         );
