@@ -2525,7 +2525,7 @@ export default function App() {
                             <td style={{ color: isIncomplete ? "var(--err)" : "var(--t2)", fontWeight: isIncomplete ? 700 : 400 }}>{a.hours_worked ? `${a.hours_worked}h` : "—"}{isIncomplete ? " ⚠️" : ""}</td>
                             <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 20 ? a.location_label.substring(0, 20) + "..." : a.location_label}</span> : "—"}</td>
                             <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
-                            <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
+                            <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : a.status === "on_leave" ? "blue" : "gray"}`}>{a.status === "on_leave" ? "🏖️ On Leave" : a.status}</span></td>
                             <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes || "—"}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.face_photo ? <img src={a.face_photo} alt="in" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—") : null}</td>
                             <td>{(role === "admin" || role === "hr") ? (a.checkout_photo ? <img src={a.checkout_photo} alt="out" className="photo-thumb" onClick={() => setPhotoPreview(a.checkout_photo)} /> : "—") : null}</td>
@@ -3089,7 +3089,7 @@ export default function App() {
                               <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : <span style={{ color: "var(--warn)" }}>⏳ {T("Working", "جاري العمل")}</span>}</td>
                               <td>{a.hours_worked ? `${a.hours_worked}h` : "—"}</td>
                               <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 15 ? a.location_label.substring(0, 15) + "..." : a.location_label}</span> : "—"}</td>
-                              <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : "gray"}`}>{a.status}</span></td>
+                              <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : a.status === "on_leave" ? "blue" : "gray"}`}>{a.status === "on_leave" ? "🏖️ On Leave" : a.status}</span></td>
                             </tr>
                           ))}
                         </tbody>
@@ -3256,8 +3256,80 @@ export default function App() {
                     {canAct && (
                       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                         <Btn size="sm" color="success" onClick={async () => {
-                          if (r._type === "excuse") { await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
-                          else if (r._type === "leave") { await db("leave_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`); }
+                          if (r._type === "excuse") {
+                            await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`);
+                            sendNotification("loan_approved", `✅ Excuse approved for ${emp?.name} on ${r.date}`);
+                          }
+                          else if (r._type === "leave") {
+                            // 1. Approve the leave request
+                            await db("leave_requests","PATCH",{status:"approved", approved_by: currentEmployee?.name || "Admin"},`?id=eq.${r.id}`);
+
+                            // 2. Create attendance records for each leave day (so days aren't shown as absent)
+                            const start = new Date(r.start_date);
+                            const end = new Date(r.end_date);
+                            const leaveLabel = `🏖️ ${r.type || "Leave"} — Approved by Admin`;
+                            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                              const dateStr = d.toISOString().split("T")[0];
+                              // Check if attendance record already exists for this day
+                              const existing = attendance.find(a => a.employee_id === r.employee_id && a.date === dateStr);
+                              if (!existing) {
+                                await db("attendance","POST",{
+                                  employee_id: r.employee_id,
+                                  date: dateStr,
+                                  status: "on_leave",
+                                  location_label: leaveLabel,
+                                  source: "leave_approved",
+                                  notes: `${r.type} leave approved. ${r.reason || ""}`.trim(),
+                                  hours_worked: 0,
+                                });
+                              }
+                            }
+
+                            // 3. Protect salary — check if leave type is paid
+                            const isPaid = !r.type?.toLowerCase().includes("unpaid");
+                            if (isPaid) {
+                              const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                              const empData = employees.find(e => e.id === r.employee_id);
+
+                              // Find all months affected by this leave
+                              const affectedMonths = new Set();
+                              for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                                affectedMonths.add(`${d.getFullYear()}-${d.getMonth()}`);
+                              }
+
+                              for (const monthKey of affectedMonths) {
+                                const [yr, mo] = monthKey.split("-").map(Number);
+                                const monthName = months[mo];
+                                const existingPay = payroll.find(p => p.employee_id === r.employee_id && p.month === monthName && p.year === yr);
+
+                                if (existingPay) {
+                                  // Add leave_days_approved note — salary stays full (no deduction)
+                                  await db("payroll","PATCH",{
+                                    notes: `Paid leave: ${r.days} days (${r.start_date}→${r.end_date}) — salary protected`,
+                                  },`?id=eq.${existingPay.id}`);
+                                } else if (empData) {
+                                  // Create payroll with full salary + leave note
+                                  const net = (empData.salary||0) + (empData.allowances||0) + (empData.bonuses||0) - (empData.deductions||0) - (empData.tax||0) - (empData.insurance||0);
+                                  await db("payroll","POST",{
+                                    employee_id: empData.id,
+                                    month: monthName,
+                                    year: yr,
+                                    base_salary: empData.salary||0,
+                                    allowances: empData.allowances||0,
+                                    bonuses: empData.bonuses||0,
+                                    deductions: empData.deductions||0,
+                                    tax: empData.tax||0,
+                                    insurance: empData.insurance||0,
+                                    net_salary: net,
+                                    status: "pending",
+                                    notes: `Paid leave: ${r.days} days (${r.start_date}→${r.end_date}) — salary protected`,
+                                  });
+                                }
+                              }
+                            }
+
+                            sendNotification("loan_approved", `✅ ${r.days}-day ${r.type} leave approved for ${emp?.name} (${r.start_date} → ${r.end_date})`);
+                          }
                           else if (r._type === "loan") {
                             const months=["January","February","March","April","May","June","July","August","September","October","November","December"];
                             await db("loans","PATCH",{status:"active",approved_by:currentEmployee?.name||"Admin"},`?id=eq.${r.id}`);
