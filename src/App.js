@@ -2800,11 +2800,44 @@ export default function App() {
               <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
               <Btn color="primary" disabled={saving} onClick={async()=>{
                 setSaving(true);
-                const net=calcNet(modalData);
-                if(mtype==="createPayroll") await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
-                else await db("payroll","PATCH",{...modalData,net_salary:net},`?id=eq.${modalData.id}`);
+                const net = calcNet(modalData);
+                const empData = employees.find(e => e.id === modalData.employee_id);
+
+                if (mtype === "createPayroll") {
+                  // Save payslip
+                  await db("payroll","POST",{...modalData, net_salary: net, status: "pending"});
+
+                  // Also update employee's base salary fields so they reflect everywhere
+                  if (empData && modalData.base_salary) {
+                    await db("employees","PATCH",{
+                      salary: modalData.base_salary,
+                      allowances: modalData.allowances || 0,
+                      bonuses: modalData.bonuses || 0,
+                      deductions: modalData.deductions || 0,
+                      tax: modalData.tax || 0,
+                      insurance: modalData.insurance || 0,
+                      net_salary: net,
+                    },`?id=eq.${empData.id}`);
+                  }
+                } else {
+                  // Edit payslip
+                  await db("payroll","PATCH",{...modalData, net_salary: net},`?id=eq.${modalData.id}`);
+
+                  // Also sync to employee record
+                  if (empData && modalData.base_salary) {
+                    await db("employees","PATCH",{
+                      salary: modalData.base_salary,
+                      allowances: modalData.allowances || 0,
+                      bonuses: modalData.bonuses || 0,
+                      deductions: modalData.deductions || 0,
+                      tax: modalData.tax || 0,
+                      insurance: modalData.insurance || 0,
+                      net_salary: net,
+                    },`?id=eq.${empData.id}`);
+                  }
+                }
                 await loadAll(); setSaving(false); closeModal();
-              }}>{saving?<span className="spinner"/>:T("Save","حفظ")}</Btn>
+              }}>{saving?<span className="spinner"/>:T("Save & Sync to Employee","حفظ ومزامنة للموظف")}</Btn>
             </div>
           </Modal>
         ))}
