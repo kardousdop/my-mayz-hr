@@ -969,9 +969,11 @@ export default function App() {
     if (!loggedIn) return;
 
     const loadAttendanceOnly = async () => {
-      const att = await db("attendance", "GET", null, "?select=*&order=date.desc,check_in.desc&limit=300");
+      const todayStr = new Date().toISOString().split("T")[0];
+      const last30 = new Date(Date.now() - 30*86400000).toISOString().split("T")[0];
+      // Load today's records + last 30 days — no limit so nobody gets cut off
+      const att = await db("attendance", "GET", null, `?select=*&date=gte.${last30}&order=date.desc,check_in.desc`);
       if (att) setAttendance(att);
-      // Also refresh requests for badge count
       const [ex, lv, ln] = await Promise.all([
         db("excuse_requests", "GET", null, "?select=*&order=created_at.desc"),
         db("leave_requests", "GET", null, "?select=*&order=created_at.desc"),
@@ -992,7 +994,7 @@ export default function App() {
   const loadAll = async () => {
     const [emps, att, ln, ex, lv, pay, sh, esh] = await Promise.all([
       db("employees", "GET", null, "?select=*&order=name"),
-      db("attendance", "GET", null, "?select=*&order=date.desc,check_in.desc&limit=300"),
+      db("attendance", "GET", null, `?select=*&date=gte.${new Date(Date.now()-90*86400000).toISOString().split("T")[0]}&order=date.desc,check_in.desc`),
       db("loans", "GET", null, "?select=*&order=created_at.desc"),
       db("excuse_requests", "GET", null, "?select=*&order=created_at.desc"),
       db("leave_requests", "GET", null, "?select=*&order=created_at.desc"),
@@ -1207,9 +1209,23 @@ export default function App() {
       ? (typeof currentEmployee.approved_locations === "string"
           ? JSON.parse(currentEmployee.approved_locations)
           : currentEmployee.approved_locations)
-      : ["office"];
+      : ["office", "warehouse", "mall"]; // default: all locations
 
-    const matchedLoc = getMatchedLocation(loc.lat, loc.lng, empApprovedLocs);
+    // Always read fresh coordinates from localStorage (admin may have updated them)
+    const freshLocs = getApprovedLocations();
+    const matchedLoc = (() => {
+      const toCheck = empApprovedLocs?.length > 0
+        ? freshLocs.filter(l => empApprovedLocs.includes(l.id))
+        : freshLocs;
+      console.log("🗺️ GPS Check | Employee loc:", loc.lat.toFixed(5), loc.lng.toFixed(5));
+      console.log("🗺️ Checking against:", toCheck.map(l => `${l.name}: ${l.lat.toFixed(5)},${l.lng.toFixed(5)} r=${(l.radius*1000).toFixed(0)}m`));
+      for (const l of toCheck) {
+        const dist = distKm(loc.lat, loc.lng, l.lat, l.lng);
+        console.log(`🗺️ ${l.name}: dist=${(dist*1000).toFixed(0)}m, allowed=${(l.radius*1000).toFixed(0)}m → ${dist <= l.radius ? "✅ MATCH" : "❌ too far"}`);
+        if (dist <= l.radius) return l;
+      }
+      return null;
+    })();
 
     if (matchedLoc) {
       await doSaveClockIn(clockTime, loc, matchedLoc.name, photoData);
@@ -2521,8 +2537,53 @@ export default function App() {
 
             {/* Attendance Table */}
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div className="card-title">📋 {T("Attendance Records", "سجلات الحضور")} ({filtered.length})</div>
+                {(role === "admin" || role === "hr" || role === "accountant") && (
+                  <Btn color="success" size="sm" onClick={() => {
+                    // Build CSV data
+                    const headers = ["Date","Employee Code","Employee Name","Shift","Check In","Check Out","Hours Worked","Location","GPS Lat","GPS Lng","Status","Notes"];
+                    const rows = filtered.map(a => {
+                      const emp = employees.find(e => e.id === a.employee_id);
+                      const es = empShifts.find(x => x.employee_id === a.employee_id);
+                      const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                      const checkIn = a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}) : "";
+                      const checkOut = a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}) : "";
+                      const status = a.status === "on_leave" ? "On Leave" : a.status === "very_late" ? "Very Late" : a.status || "";
+                      return [
+                        a.date || "",
+                        emp?.employee_code || "",
+                        emp?.name || "Unknown",
+                        shift ? shift.name : "",
+                        checkIn,
+                        checkOut,
+                        a.hours_worked ? `${a.hours_worked}h` : "",
+                        (a.location_label || "").replace(/,/g, ";"),
+                        a.gps_lat ? Number(a.gps_lat).toFixed(6) : "",
+                        a.gps_lng ? Number(a.gps_lng).toFixed(6) : "",
+                        status,
+                        (a.notes || "").replace(/,/g, ";"),
+                      ];
+                    });
+
+                    // Build CSV string with BOM for Excel Arabic support
+                    const csv = "\uFEFF" + [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const a2 = document.createElement("a");
+                    const label = reportFilter.month
+                      ? reportFilter.month
+                      : reportFilter.from
+                        ? `${reportFilter.from}_to_${reportFilter.to}`
+                        : new Date().toISOString().split("T")[0];
+                    a2.href = url;
+                    a2.download = `myMayz_Attendance_${label}.csv`;
+                    a2.click();
+                    URL.revokeObjectURL(url);
+                  }}>
+                    📥 {T("Export Excel", "تصدير Excel")}
+                  </Btn>
+                )}
               </div>
               <div style={{ overflowX: "auto" }}>
                 <table>
