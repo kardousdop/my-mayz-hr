@@ -118,25 +118,40 @@ function getShiftStatus(shift, clockInTime) {
 // ============================================================
 // APPROVED GPS LOCATIONS — update coords when confirmed
 // ============================================================
-const APPROVED_LOCATIONS = [
-  { id: "office",    name: "Office",        nameAr: "المكتب",   lat: 29.9921,  lng: 31.0316,  radius: 0.3, icon: "🏢" },
-  { id: "warehouse", name: "Warehouse",     nameAr: "المستودع", lat: 29.9527,  lng: 30.9219,  radius: 0.3, icon: "🏭" }, // ← replace with exact coords
-  { id: "mall",      name: "Mall of Egypt", nameAr: "مول مصر", lat: 29.97243, lng: 31.01641,  radius: 0.25, icon: "🛍️" },
-];
+// Load GPS locations from localStorage (admin can edit from Settings)
+function getApprovedLocations() {
+  try {
+    const saved = localStorage.getItem("mymayz_locations");
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return [
+    { id: "office",    name: "Office",        nameAr: "المكتب",    lat: 30.0446215, lng: 31.1988618, radius: 0.5, icon: "🏢" },
+    { id: "warehouse", name: "Warehouse",     nameAr: "المستودع",  lat: 29.9527,    lng: 30.9219,    radius: 0.5, icon: "🏭" },
+    { id: "mall",      name: "Mall of Egypt", nameAr: "مول مصر",   lat: 29.97243,   lng: 31.01641,   radius: 0.5, icon: "🛍️" },
+  ];
+}
+const APPROVED_LOCATIONS = getApprovedLocations();
 
 function getMatchedLocation(lat, lng, approvedIds) {
+  const locs = getApprovedLocations(); // always reads latest from localStorage
   const toCheck = approvedIds?.length > 0
-    ? APPROVED_LOCATIONS.filter(l => approvedIds.includes(l.id))
-    : APPROVED_LOCATIONS;
+    ? locs.filter(l => approvedIds.includes(l.id))
+    : locs;
   for (const loc of toCheck) {
     if (distKm(lat, lng, loc.lat, loc.lng) <= loc.radius) return loc;
   }
   return null;
 }
 
-// Distance calculation
+// Distance calculation — proper Haversine formula (accurate)
 function distKm(lat1, lng1, lat2, lng2) {
-  return Math.sqrt(Math.pow(lat1 - lat2, 2) + Math.pow(lng1 - lng2, 2)) * 111;
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 // ============================================================
@@ -904,6 +919,9 @@ export default function App() {
   const [dashFilter, setDashFilter] = useState("all");
   const [dashSort, setDashSort] = useState("checkin_desc");
   const [dashEmpSearch, setDashEmpSearch] = useState("");
+  const [gpsLocs, setGpsLocs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("mymayz_locations") || "null") || getApprovedLocations(); } catch { return getApprovedLocations(); }
+  });
   const todayStr = new Date().toISOString().split("T")[0];
   const [reportFilter, setReportFilter] = useState({ from: todayStr, to: todayStr, emp: "", status: "", sort: "desc", month: "" });
   const [shifts, setShifts] = useState(DEFAULT_SHIFTS);
@@ -2259,9 +2277,26 @@ export default function App() {
                       <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
                         <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
                         <div style={{ flex: 1, textAlign: "left" }}>
-                          <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("Camera Error", "خطأ الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
-                          {photoErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{photoErr}</div>}
-                          {/* Photo only visible to admin/hr — never shown to employee */}
+                          <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("📵 Camera Access Denied", "📵 تم رفض الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
+                          {photoErr && (
+                            <div style={{ marginTop: 10 }}>
+                              <div style={{ background: "rgba(239,68,68,0.15)", border: "1px solid var(--err)", borderRadius: 10, padding: "12px 14px", fontSize: 12, lineHeight: 1.9 }}>
+                                <div style={{ fontWeight: 700, color: "var(--err)", marginBottom: 8, fontSize: 13 }}>
+                                  🔴 {T("Camera blocked — please enable it:", "الكاميرا محظورة — يرجى تفعيلها:")}
+                                </div>
+                                <div>📱 <strong>iPhone / Safari:</strong></div>
+                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Settings → Safari → Camera → Allow", "الإعدادات ← Safari ← الكاميرا ← سماح")}</div>
+                                <div style={{ marginTop: 6 }}>🤖 <strong>Android / Chrome:</strong></div>
+                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Tap 🔒 in address bar → Camera → Allow", "اضغط 🔒 في شريط العنوان ← الكاميرا ← اسمح")}</div>
+                                <div style={{ marginTop: 6 }}>💻 <strong>Desktop / Chrome:</strong></div>
+                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Click 🔒 left of URL → Camera → Allow → reload page", "اضغط 🔒 يسار الرابط ← الكاميرا ← اسمح ← أعد تحميل")}</div>
+                                <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,158,11,0.15)", borderRadius: 6, color: "var(--warn)", fontWeight: 600 }}>
+                                  ✅ {T("After allowing → tap '🔄 Try Again' below", "بعد السماح → اضغط '🔄 حاول مرة أخرى' أدناه")}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {/* Photo only visible to admin/hr */}
                           {photo && (role === "admin" || role === "hr") && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
                         </div>
                       </div>
@@ -3722,23 +3757,76 @@ export default function App() {
       </div>
 
       <div className="card">
-        <div className="card-title" style={{ marginBottom: 16 }}>📍 {T("Approved GPS Locations", "مواقع العمل المعتمدة")}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {APPROVED_LOCATIONS.map((loc, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 10 }}>
-              <div style={{ fontSize: 24 }}>{loc.icon}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: "var(--t1)" }}>{loc.name} <span style={{ color: "var(--t3)", fontWeight: 400, fontSize: 13 }}>({loc.nameAr})</span></div>
-                <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 2 }}>
-                  📍 {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)} · 🎯 {T("Radius", "نطاق")}: {(loc.radius * 1000).toFixed(0)}m
+        <div className="card-title" style={{ marginBottom: 4 }}>📍 {T("Approved GPS Locations", "مواقع العمل المعتمدة")}</div>
+        <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 16 }}>
+          {T("Edit coordinates and radius for each location. Stand inside the location and tap '📍 Use My Location' for best accuracy.",
+             "عدّل الإحداثيات والنطاق لكل موقع. قف داخل الموقع واضغط '📍 استخدم موقعي' للحصول على أفضل دقة.")}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {gpsLocs.map((loc, i) => (
+            <div key={loc.id} style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 24 }}>{loc.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: "var(--t1)", fontSize: 15 }}>{loc.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--t3)" }}>{loc.nameAr}</div>
+                </div>
+                <span className="badge green" style={{ marginLeft: "auto" }}>🎯 {(loc.radius * 1000).toFixed(0)}m</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 4 }}>📍 {T("Latitude","خط العرض")}</label>
+                  <input type="number" step="0.000001" value={loc.lat}
+                    onChange={e => {
+                      const n = [...gpsLocs]; n[i] = { ...n[i], lat: +e.target.value };
+                      setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                    }}
+                    style={{ width:"100%", padding:"7px 8px", background:"var(--bg)", border:"1.5px solid var(--border)", borderRadius:6, color:"var(--t1)", fontFamily:"monospace", fontSize:12, outline:"none" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 4 }}>📍 {T("Longitude","خط الطول")}</label>
+                  <input type="number" step="0.000001" value={loc.lng}
+                    onChange={e => {
+                      const n = [...gpsLocs]; n[i] = { ...n[i], lng: +e.target.value };
+                      setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                    }}
+                    style={{ width:"100%", padding:"7px 8px", background:"var(--bg)", border:"1.5px solid var(--border)", borderRadius:6, color:"var(--t1)", fontFamily:"monospace", fontSize:12, outline:"none" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--t3)", display: "block", marginBottom: 4 }}>🎯 {T("Radius (meters)","النطاق (متر)")}</label>
+                  <input type="number" step="50" min="50" value={Math.round(loc.radius * 1000)}
+                    onChange={e => {
+                      const n = [...gpsLocs]; n[i] = { ...n[i], radius: +e.target.value / 1000 };
+                      setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                    }}
+                    style={{ width:"100%", padding:"7px 8px", background:"var(--bg)", border:"1.5px solid var(--border)", borderRadius:6, color:"var(--t1)", fontFamily:"inherit", fontSize:12, outline:"none" }} />
                 </div>
               </div>
-              <span className="badge green">{T("Active", "نشط")}</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Btn size="sm" color="primary" onClick={() => {
+                  if (!navigator.geolocation) { alert(T("GPS not supported on this device.", "GPS غير مدعوم على هذا الجهاز.")); return; }
+                  navigator.geolocation.getCurrentPosition(pos => {
+                    const newLat = +pos.coords.latitude.toFixed(7);
+                    const newLng = +pos.coords.longitude.toFixed(7);
+                    const n = [...gpsLocs]; n[i] = { ...n[i], lat: newLat, lng: newLng };
+                    setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                    alert(T(
+                      `✅ ${loc.name} coordinates updated!\nLat: ${newLat}\nLng: ${newLng}\nAccuracy: ±${Math.round(pos.coords.accuracy)}m`,
+                      `✅ تم تحديث إحداثيات ${loc.nameAr}!\nخط العرض: ${newLat}\nخط الطول: ${newLng}\nالدقة: ±${Math.round(pos.coords.accuracy)}م`
+                    ));
+                  }, err => alert(T("Could not get GPS. Make sure location is enabled in browser.", "تعذر الحصول على GPS. تأكد من تفعيل الموقع في المتصفح.")),
+                  { enableHighAccuracy: true, timeout: 10000 });
+                }}>📍 {T("Use My Current Location", "استخدم موقعي الحالي")}</Btn>
+                <span style={{ fontSize: 11, color: "var(--t3)" }}>
+                  {T("Stand inside the office/location and tap this","قف داخل الموقع واضغط هذا الزر")}
+                </span>
+              </div>
             </div>
           ))}
         </div>
-        <div className="info-box" style={{ marginTop: 16 }}>
-          💡 {T("To update GPS coordinates, contact your system administrator or update the APPROVED_LOCATIONS constant in the source code.", "لتحديث إحداثيات GPS، تواصل مع مشرف النظام أو قم بتحديث ثابت APPROVED_LOCATIONS في الكود المصدري.")}
+        <div className="info-box" style={{ marginTop: 14, borderColor: "var(--warn)", background: "var(--warnb)" }}>
+          ⚠️ {T("Changes save automatically. Employees need to reload the app to get new coordinates.",
+                 "التغييرات تُحفظ تلقائياً. يجب على الموظفين إعادة تحميل التطبيق لتطبيق الإحداثيات الجديدة.")}
         </div>
       </div>
     </div>
