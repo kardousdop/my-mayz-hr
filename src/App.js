@@ -253,6 +253,11 @@ const css = `
   /* ── TABLE ── */
   .table-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
   table{width:100%;border-collapse:collapse;min-width:600px}
+  .sort-th{cursor:pointer;user-select:none;white-space:nowrap}
+  .sort-th:hover{color:var(--acc);background:rgba(99,102,241,0.06)}
+  .sort-th .sort-arrow{margin-left:4px;opacity:0.5;font-size:10px}
+  .sort-th.active-sort{color:var(--acc)}
+  .sort-th.active-sort .sort-arrow{opacity:1}
   th{text-align:left;font-size:11px;color:var(--t3);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.6px;background:var(--bg2);white-space:nowrap}
   .rtl th{text-align:right}
   td{padding:12px 14px;font-size:13px;border-bottom:1px solid var(--border);color:var(--t2);vertical-align:middle}
@@ -918,7 +923,9 @@ export default function App() {
   const [reqFilter, setReqFilter] = useState("pending");
   const [dashFilter, setDashFilter] = useState("all");
   const [dashSort, setDashSort] = useState("checkin_desc");
+  const [dashSortCol, setDashSortCol] = useState({ col: "checkin", dir: "desc" });
   const [dashEmpSearch, setDashEmpSearch] = useState("");
+  const [attSort, setAttSort] = useState({ col: "date", dir: "desc" });
   const [gpsLocs, setGpsLocs] = useState(() => {
     try { return JSON.parse(localStorage.getItem("mymayz_locations") || "null") || getApprovedLocations(); } catch { return getApprovedLocations(); }
   });
@@ -1351,9 +1358,18 @@ export default function App() {
     const pending = excuses.filter(e => e.status === "pending").length + leaveReqs.filter(l => l.status === "pending").length;
     const totalPayroll = employees.reduce((s, e) => s + (Number(e.salary) || 0), 0);
 
+    const toggleDashSort = (col) => {
+      setDashSortCol(prev => ({ col, dir: prev.col === col && prev.dir === "asc" ? "desc" : "asc" }));
+    };
+    const SH = ({ col, children }) => {
+      const active = dashSortCol.col === col;
+      const arrow = active ? (dashSortCol.dir === "asc" ? "▲" : "▼") : "⇅";
+      return <th className={`sort-th${active ? " active-sort" : ""}`} onClick={() => toggleDashSort(col)}>{children}<span className="sort-arrow">{arrow}</span></th>;
+    };
+
     const filteredTodayAtt = todayAtt
       .filter(a => {
-        if (dashFilter === "present") return !!a.check_in; // anyone who signed in today
+        if (dashFilter === "present") return !!a.check_in;
         if (dashFilter === "late") return a.status === "late" || a.status === "very_late";
         if (dashFilter === "incomplete") return a.status === "incomplete";
         if (dashFilter === "out") return !!a.check_out;
@@ -1366,11 +1382,19 @@ export default function App() {
         return emp?.name?.toLowerCase().includes(dashEmpSearch.toLowerCase());
       })
       .sort((a, b) => {
-        if (dashSort === "checkin_desc") return new Date(b.check_in||0) - new Date(a.check_in||0);
-        if (dashSort === "checkin_asc") return new Date(a.check_in||0) - new Date(b.check_in||0);
-        if (dashSort === "name_asc") { const ea=employees.find(e=>e.id===a.employee_id); const eb=employees.find(e=>e.id===b.employee_id); return (ea?.name||"").localeCompare(eb?.name||""); }
-        if (dashSort === "status") return (a.status||"").localeCompare(b.status||"");
-        return 0;
+        const { col, dir } = dashSortCol;
+        const mul = dir === "asc" ? 1 : -1;
+        if (col === "checkin")  return mul * (new Date(a.check_in||0) - new Date(b.check_in||0));
+        if (col === "checkout") return mul * (new Date(a.check_out||0) - new Date(b.check_out||0));
+        if (col === "hours") return mul * ((Number(a.hours_worked)||0) - (Number(b.hours_worked)||0));
+        if (col === "status")   return mul * (a.status||"").localeCompare(b.status||"");
+        if (col === "location") return mul * (a.location_label||"").localeCompare(b.location_label||"");
+        if (col === "name") {
+          const ea = employees.find(e => e.id === a.employee_id);
+          const eb = employees.find(e => e.id === b.employee_id);
+          return mul * (ea?.name||"").localeCompare(eb?.name||"");
+        }
+        return mul * (new Date(b.check_in||0) - new Date(a.check_in||0));
       });
 
     return (
@@ -1428,30 +1452,21 @@ export default function App() {
             ))}
 
             {/* Sort */}
-            <select value={dashSort} onChange={e => setDashSort(e.target.value)}
-              style={{ marginLeft: "auto", padding: "5px 28px 5px 10px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t2)", fontFamily: "inherit", fontSize: 12, outline: "none" }}>
-              <option value="checkin_desc">🔽 {T("Newest First","الأحدث أولاً")}</option>
-              <option value="checkin_asc">🔼 {T("Oldest First","الأقدم أولاً")}</option>
-              <option value="name_asc">🔤 {T("Name A-Z","الاسم أ-ي")}</option>
-              <option value="status">📊 {T("By Status","حسب الحالة")}</option>
-            </select>
-
-            {/* Search */}
             <input placeholder={T("Search employee...","بحث موظف...")} value={dashEmpSearch}
               onChange={e => setDashEmpSearch(e.target.value)}
-              style={{ padding: "5px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, outline: "none", width: 150 }} />
+              style={{ marginLeft: "auto", padding: "5px 12px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, outline: "none", width: 180 }} />
           </div>
 
           <div style={{ overflowX: "auto" }}>
             <table>
               <thead><tr>
-                <th>{T("Employee","الموظف")}</th>
-                <th>{T("Check In","دخول")}</th>
-                <th>{T("Check Out","خروج")}</th>
-                <th>{T("Hours","ساعات")}</th>
-                <th>{T("Location","الموقع")}</th>
+                <SH col="name">{T("Employee","الموظف")}</SH>
+                <SH col="checkin">{T("Check In","دخول")}</SH>
+                <SH col="checkout">{T("Check Out","خروج")}</SH>
+                <SH col="hours">{T("Hours","ساعات")}</SH>
+                <SH col="location">{T("Location","الموقع")}</SH>
                 <th>{T("GPS","GPS")}</th>
-                <th>{T("Status","الحالة")}</th>
+                <SH col="status">{T("Status","الحالة")}</SH>
                 <th>{T("Photo","صورة")}</th>
                 {role === "admin" && <th>{T("Action","إجراء")}</th>}
               </tr></thead>
@@ -2193,9 +2208,7 @@ export default function App() {
     const dateStr = now.toLocaleDateString(ar ? "ar-EG" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     const filtered = attendance.filter(a => {
-      // Employees only see their own records
       if (role === "employee" && a.employee_id !== currentEmployee?.id) return false;
-      // Month quick filter (YYYY-MM format)
       if (reportFilter.month) {
         if (!a.date?.startsWith(reportFilter.month)) return false;
       } else {
@@ -2206,10 +2219,36 @@ export default function App() {
       if (reportFilter.status && a.status !== reportFilter.status) return false;
       return true;
     }).sort((a, b) => {
-      const ta = new Date(a.check_in || a.date + "T00:00:00").getTime();
-      const tb = new Date(b.check_in || b.date + "T00:00:00").getTime();
-      return reportFilter.sort === "asc" ? ta - tb : tb - ta;
+      const { col, dir } = attSort;
+      const mul = dir === "asc" ? 1 : -1;
+      if (col === "date")     return mul * (a.date||"").localeCompare(b.date||"");
+      if (col === "checkin")  return mul * (new Date(a.check_in||0) - new Date(b.check_in||0));
+      if (col === "checkout") return mul * (new Date(a.check_out||0) - new Date(b.check_out||0));
+      if (col === "hours")    return mul * ((Number(a.hours_worked)||0) - (Number(b.hours_worked)||0));
+      if (col === "status")   return mul * (a.status||"").localeCompare(b.status||"");
+      if (col === "location") return mul * (a.location_label||"").localeCompare(b.location_label||"");
+      if (col === "notes")    return mul * (a.notes||"").localeCompare(b.notes||"");
+      if (col === "name") {
+        const ea = employees.find(e => e.id === a.employee_id);
+        const eb = employees.find(e => e.id === b.employee_id);
+        return mul * (ea?.name||"").localeCompare(eb?.name||"");
+      }
+      if (col === "shift") {
+        const ea = empShifts.find(x => x.employee_id === a.employee_id);
+        const eb = empShifts.find(x => x.employee_id === b.employee_id);
+        const sa = ea ? (shifts.find(s => s.id === ea.shift_id)?.name||"") : "";
+        const sb = eb ? (shifts.find(s => s.id === eb.shift_id)?.name||"") : "";
+        return mul * sa.localeCompare(sb);
+      }
+      return mul * (new Date(b.check_in||b.date) - new Date(a.check_in||a.date));
     });
+
+    const toggleAttSort = (col) => setAttSort(prev => ({ col, dir: prev.col === col && prev.dir === "asc" ? "desc" : "asc" }));
+    const AH = ({ col, children }) => {
+      const active = attSort.col === col;
+      const arrow = active ? (attSort.dir === "asc" ? "▲" : "▼") : "⇅";
+      return <th className={`sort-th${active ? " active-sort" : ""}`} onClick={() => toggleAttSort(col)}>{children}<span className="sort-arrow">{arrow}</span></th>;
+    };
 
     const stats = {
       present: filtered.filter(a => a.status === "present").length,
@@ -2455,17 +2494,8 @@ export default function App() {
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
                 <div className="card-title">🔍 {T("Filter Reports", "تصفية التقارير")}</div>
-                {/* Sort toggle */}
-                <div style={{ display: "flex", gap: 6 }}>
-                  {[
-                    { val: "desc", label: "🔽 " + T("Newest First", "الأحدث أولاً") },
-                    { val: "asc",  label: "🔼 " + T("Oldest First", "الأقدم أولاً") },
-                  ].map(s => (
-                    <button key={s.val} onClick={() => setReportFilter({ ...reportFilter, sort: s.val })}
-                      style={{ padding: "6px 12px", background: reportFilter.sort === s.val ? "var(--acc)" : "var(--bg2)", border: `1px solid ${reportFilter.sort === s.val ? "var(--acc)" : "var(--border)"}`, color: reportFilter.sort === s.val ? "white" : "var(--t2)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, transition: "all 0.15s" }}>
-                      {s.label}
-                    </button>
-                  ))}
+                <div style={{ fontSize: 11, color: "var(--t3)" }}>
+                  💡 {T("Click any column header to sort ▲▼", "اضغط على أي عنوان عمود للترتيب ▲▼")}
                 </div>
               </div>
 
@@ -2588,16 +2618,16 @@ export default function App() {
               <div style={{ overflowX: "auto" }}>
                 <table>
                   <thead><tr>
-                    <th>{T("Date", "التاريخ")}</th>
-                    <th>{T("Employee", "الموظف")}</th>
-                    <th>{T("Shift", "المناوبة")}</th>
-                    <th>{T("Check In", "دخول")}</th>
-                    <th>{T("Check Out", "خروج")}</th>
-                    <th>{T("Hours", "ساعات")}</th>
-                    <th>{T("Location", "الموقع")}</th>
+                    <AH col="date">{T("Date", "التاريخ")}</AH>
+                    <AH col="name">{T("Employee", "الموظف")}</AH>
+                    <AH col="shift">{T("Shift", "المناوبة")}</AH>
+                    <AH col="checkin">{T("Check In", "دخول")}</AH>
+                    <AH col="checkout">{T("Check Out", "خروج")}</AH>
+                    <AH col="hours">{T("Hours", "ساعات")}</AH>
+                    <AH col="location">{T("Location", "الموقع")}</AH>
                     <th>{T("In GPS", "GPS دخول")}</th>
-                    <th>{T("Status", "الحالة")}</th>
-                    <th>{T("Notes", "ملاحظات")}</th>
+                    <AH col="status">{T("Status", "الحالة")}</AH>
+                    <AH col="notes">{T("Notes", "ملاحظات")}</AH>
                     {(role === "admin" || role === "hr") && <th>{T("In Photo", "صورة دخول")}</th>}
                     {(role === "admin" || role === "hr") && <th>{T("Out Photo", "صورة خروج")}</th>}
                     {role === "admin" && <th>{T("Actions", "إجراءات")}</th>}
