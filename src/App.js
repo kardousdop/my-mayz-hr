@@ -1898,6 +1898,30 @@ export default function App() {
               </select>
             </div>
           </div>
+          {/* Role — admin only */}
+          {role === "admin" && (
+            <div className="form-group">
+              <label>🛡️ {T("Portal Role (changes which portal they log into)", "دور البوابة (يحدد أي بوابة يدخلون منها)")}</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                {[
+                  { val: "employee",   icon: "🙋", label: T("Employee","موظف"),       desc: T("Standard employee portal","بوابة الموظف العادية") },
+                  { val: "hr",         icon: "👥", label: "HR",                       desc: T("Can manage attendance & requests","يدير الحضور والطلبات") },
+                  { val: "accountant", icon: "💰", label: T("Accountant","محاسب"),    desc: T("Can view payroll & reports","يعرض الرواتب والتقارير") },
+                  { val: "admin",      icon: "🛡️", label: "Admin",                    desc: T("Full access to everything","وصول كامل لكل شيء") },
+                ].map(r => {
+                  const active = (modalData.role || "employee") === r.val;
+                  return (
+                    <div key={r.val} onClick={() => setModalData({ ...modalData, role: r.val })}
+                      style={{ flex: "1 1 140px", padding: "10px 14px", borderRadius: 10, border: `2px solid ${active ? "var(--acc)" : "var(--border)"}`, background: active ? "var(--accg)" : "var(--bg2)", cursor: "pointer", transition: "all 0.15s" }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: active ? "var(--acc)" : "var(--t1)" }}>{r.icon} {r.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{r.desc}</div>
+                      {active && <div style={{ fontSize: 10, color: "var(--acc)", marginTop: 4, fontWeight: 600 }}>✓ {T("Selected","محدد")}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* Approved GPS Locations */}
           <div className="form-group">
             <label>📍 {T("Approved Work Locations (GPS)", "مواقع العمل المعتمدة (GPS)")}</label>
@@ -1999,6 +2023,7 @@ export default function App() {
                 email: modalData.email, phone: modalData.phone,
                 department: modalData.department, position: modalData.position,
                 salary: modalData.salary, status: modalData.status,
+                role: modalData.role || "employee",
                 approved_locations: JSON.stringify(locs),
                 payment_id: modalData.payment_id || null,
                 payment_mobile: modalData.payment_mobile || null,
