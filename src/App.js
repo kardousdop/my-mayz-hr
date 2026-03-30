@@ -2065,11 +2065,13 @@ export default function App() {
                     setSaving(true);
                     try {
                       // Step 1: Find user in Supabase Auth by email
-                      const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(modalData.email)}`, {
+                      const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
                         headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` }
                       });
                       const listData = await listRes.json();
-                      const userId = listData?.users?.[0]?.id;
+                      const allUsers = listData?.users || [];
+                      const foundUser = allUsers.find(u => u.email?.toLowerCase() === modalData.email?.toLowerCase());
+                      const userId = foundUser?.id;
 
                       if (userId) {
                         // Step 2: Update password via admin API
