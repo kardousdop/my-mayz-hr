@@ -1179,6 +1179,14 @@ export default function App() {
       || "office";
     console.log("🕐 Clock-in | Employee:", currentEmployee?.name, "| work_mode:", workMode, "| day:", day);
 
+    // No verification mode — skip everything and sign in directly
+    if (workMode === "no_verify") {
+      setVerifying("saving");
+      setGpsOk(true); setPhotoOk(true);
+      await doSaveClockIn(clockTime, null, T("Free Sign-in", "تسجيل حر"), null);
+      return;
+    }
+
     // Skip camera for: full remote (always) or hybrid on Friday/Saturday
     const skipCamera =
       workMode === "remote" ||
@@ -1298,24 +1306,28 @@ export default function App() {
     setClockOutPhoto(null);
     setClockOutDone(false);
 
-    // GPS — always required
-    let outLoc = null;
-    try { outLoc = await getGPS(); setClockOutGpsOk(true); } catch(e) {}
-
-    // Camera — skip for remote and hybrid-saturday
-    let outPhoto = null;
-    const outDay = new Date().getDay(); // 0=Sun, 5=Fri, 6=Sat
+    const outDay = new Date().getDay();
     const outWorkMode = currentEmployee?.work_mode
       || employees.find(e => e.id === currentEmployee?.id)?.work_mode
       || "office";
     console.log("🚪 Clock-out | work_mode:", outWorkMode, "| day:", outDay);
-    const outSkipCamera =
-      outWorkMode === "remote" ||
-      (outWorkMode === "hybrid" && (outDay === 5 || outDay === 6));
-    if (!outSkipCamera) {
-      try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
+
+    let outLoc = null;
+    let outPhoto = null;
+
+    if (outWorkMode === "no_verify") {
+      // No verification — skip everything
+      setClockOutGpsOk(true); setClockOutPhotoOk(true);
     } else {
-      setClockOutPhotoOk(true);
+      // GPS
+      try { outLoc = await getGPS(); setClockOutGpsOk(true); } catch(e) {}
+      // Camera
+      const outSkipCamera = outWorkMode === "remote" || (outWorkMode === "hybrid" && (outDay === 5 || outDay === 6));
+      if (!outSkipCamera) {
+        try { outPhoto = await capturePhoto(); setClockOutPhoto(outPhoto); setClockOutPhotoOk(true); } catch(e) {}
+      } else {
+        setClockOutPhotoOk(true);
+      }
     }
 
     // Save clock out - always fetch fresh from DB to find today's open record
@@ -2004,9 +2016,10 @@ export default function App() {
             <label>🏢 {T("Work Mode", "نمط العمل")}</label>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {[
-                { id: "office",  icon: "🏢", title: T("Office", "المكتب"),                  desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
-                { id: "hybrid",  icon: "🔀", title: T("Hybrid", "هجين"),                    desc: T("GPS always required. Camera on workdays (Sun–Thu) only. No camera on Fri & Sat", "GPS دائماً مطلوب. الكاميرا أيام العمل (أحد–خميس) فقط. بدون كاميرا الجمعة والسبت") },
-                { id: "remote",  icon: "🏠", title: T("Full Remote", "عمل من المنزل"), desc: T("GPS always required. No camera ever", "GPS دائماً مطلوب. بدون كاميرا نهائياً") },
+                { id: "office",     icon: "🏢", title: T("Office", "المكتب"),               desc: T("GPS + Camera required on every clock-in", "GPS وكاميرا مطلوبان عند كل تسجيل دخول") },
+                { id: "hybrid",     icon: "🔀", title: T("Hybrid", "هجين"),                  desc: T("GPS always required. Camera on workdays (Sun–Thu) only. No camera on Fri & Sat", "GPS دائماً مطلوب. الكاميرا أيام العمل (أحد–خميس) فقط. بدون كاميرا الجمعة والسبت") },
+                { id: "remote",     icon: "🏠", title: T("Full Remote", "عمل من المنزل"),    desc: T("GPS always required. No camera ever", "GPS دائماً مطلوب. بدون كاميرا نهائياً") },
+                { id: "no_verify",  icon: "🆓", title: T("No Verification", "بدون تحقق"),    desc: T("No GPS, no camera — employee signs in freely from anywhere", "بدون GPS أو كاميرا — الموظف يسجل حضوره بحرية من أي مكان") },
               ].map(opt => {
                 const selected = (modalData.work_mode || "office") === opt.id;
                 return (
@@ -2380,6 +2393,11 @@ export default function App() {
                 {(() => {
                   const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
                   const d = new Date().getDay();
+                  if (wm === "no_verify") return (
+                    <div style={{ display: "inline-block", background: "var(--okb)", border: "1px solid var(--ok)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--ok)", fontWeight: 600, marginBottom: 8 }}>
+                      🆓 {T("No Verification Mode — Sign in freely", "بدون تحقق — سجّل حضورك بحرية")}
+                    </div>
+                  );
                   const isRemoteToday = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
                   if (isRemoteToday) return (
                     <div style={{ display: "inline-block", background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 20, padding: "3px 12px", fontSize: 12, color: "var(--acc)", fontWeight: 600, marginBottom: 8 }}>
@@ -4510,6 +4528,7 @@ export default function App() {
                   min_hours: modalData.min_hours || 8,
                   color: modalData.color || "#10b981",
                   is_night_shift: modalData.is_night_shift || false,
+                  is_flexible: modalData.is_flexible || false,
                   off_days: modalData.off_days || "[]",
                 };
                 console.log("💾 Saving shift:", saveData, "mode:", mtype, "id:", modalData.id);
