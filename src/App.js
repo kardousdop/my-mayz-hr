@@ -1581,11 +1581,11 @@ export default function App() {
               alert(T(`✅ Done! Rearranged ${num - 1} employee codes.`, `✅ تم! تم إعادة ترتيب ${num - 1} كودات موظفين.`));
             }}>🔢 {T("Rearrange Codes", "إعادة ترتيب الكودات")}</Btn>
           )}
-          <Btn color="primary" onClick={() => openModal("addEmployee")}>➕ {T("Add Employee", "إضافة موظف")}</Btn>
+          <Btn color="primary" onClick={() => openModal("addEmployee")} style={{ display: (role === "admin" || role === "hr") ? "" : "none" }}>➕ {T("Add Employee", "إضافة موظف")}</Btn>
         </div>
 
-        {/* Pending Activation Banner */}
-        {employees.filter(e => e.status === "pending").length > 0 && (
+        {/* Pending Activation Banner — admin & hr only */}
+        {(role === "admin" || role === "hr") && employees.filter(e => e.status === "pending").length > 0 && (
           <div style={{ background: "var(--warnb)", border: "1px solid var(--warn)", borderRadius: 10, padding: "14px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 20 }}>⏳</span>
             <div>
@@ -1596,7 +1596,7 @@ export default function App() {
         )}
 
         {/* Pending Employees */}
-        {employees.filter(e => e.status === "pending").length > 0 && (
+        {(role === "admin" || role === "hr") && employees.filter(e => e.status === "pending").length > 0 && (
           <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20, border: "1px solid var(--warn)" }}>
             <div style={{ padding: "12px 24px", background: "var(--warnb)", borderBottom: "1px solid var(--warn)" }}>
               <div className="card-title" style={{ color: "var(--warn)" }}>⏳ {T("Pending Activation", "في انتظار التفعيل")}</div>
@@ -1657,6 +1657,7 @@ export default function App() {
                 <th>{T("Role", "الدور")}</th>
                 <th>{T("Payment ID", "كود الدفع")}</th>
                 <th>{T("Status", "الحالة")}</th>
+                {role === "accountant" && <th>{T("This Month", "هذا الشهر")}</th>}
                 <th>{T("Actions", "إجراءات")}</th>
               </tr></thead>
               <tbody>
@@ -1719,25 +1720,55 @@ export default function App() {
                         }
                       </td>
                       <td><span className={`badge ${emp.status === "active" ? "green" : emp.status === "pending" ? "yellow" : "red"}`}>{emp.status}</span></td>
+                      {/* Payroll status column — visible to accountant */}
+                      {role === "accountant" && (() => {
+                        const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                        const curMonth = months[new Date().getMonth()];
+                        const curYear = new Date().getFullYear();
+                        const empPay = payroll.find(p => p.employee_id === emp.id && p.month === curMonth && p.year === curYear);
+                        return (
+                          <td>
+                            {empPay
+                              ? <span className={`badge ${empPay.status === "paid" ? "green" : "yellow"}`}>
+                                  {empPay.status === "paid" ? `✅ ${T("Paid","مدفوع")}` : `⏳ ${T("Pending","معلق")}`}
+                                </span>
+                              : <span className="badge red">❌ {T("No payslip","لا مسير")}</span>
+                            }
+                          </td>
+                        );
+                      })()}
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <Btn size="sm" color="outline" onClick={() => {
-                            const es = empShifts.find(x => x.employee_id === emp.id);
-                            openModal("editEmployee", { ...emp, assigned_shift_id: es ? String(es.shift_id) : "" });
-                          }}>✏️ {T("Edit", "تعديل")}</Btn>
-                          <Btn size="sm" color="success" onClick={() => openModal("editSalary", { ...emp, base_salary: emp.salary, allowances: emp.allowances || 0, bonuses: emp.bonuses || 0, deductions: emp.deductions || 0, tax: emp.tax || 0, insurance: emp.insurance || 0 })}>💰 {T("Salary", "الراتب")}</Btn>
-                          <Btn size="sm" color="danger" onClick={async () => {
-                            if (window.confirm(T(`Delete ${emp.name}? This cannot be undone.`, `حذف ${emp.name}؟ لا يمكن التراجع.`))) {
-                              await db("attendance", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("loans", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("excuse_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("leave_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("payroll", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("employee_shifts", "DELETE", null, `?employee_id=eq.${emp.id}`);
-                              await db("employees", "DELETE", null, `?id=eq.${emp.id}`);
-                              await loadAll();
-                            }
-                          }}>🗑️</Btn>
+                          {/* Edit full profile — admin & hr only */}
+                          {(role === "admin" || role === "hr") && (
+                            <Btn size="sm" color="outline" onClick={() => {
+                              const es = empShifts.find(x => x.employee_id === emp.id);
+                              openModal("editEmployee", { ...emp, assigned_shift_id: es ? String(es.shift_id) : "" });
+                            }}>✏️ {T("Edit", "تعديل")}</Btn>
+                          )}
+                          {/* Salary — admin, hr, accountant */}
+                          {(role === "admin" || role === "hr" || role === "accountant") && (
+                            <Btn size="sm" color="success" onClick={() => openModal("editSalary", { ...emp, base_salary: emp.salary, allowances: emp.allowances || 0, bonuses: emp.bonuses || 0, deductions: emp.deductions || 0, tax: emp.tax || 0, insurance: emp.insurance || 0 })}>💰 {T("Salary", "الراتب")}</Btn>
+                          )}
+                          {/* Payment ID — admin & accountant */}
+                          {(role === "admin" || role === "accountant") && (
+                            <Btn size="sm" color="outline" onClick={() => openModal("editPaymentId", { ...emp })}>🏦 {T("Payment", "دفع")}</Btn>
+                          )}
+                          {/* Delete — admin only */}
+                          {role === "admin" && (
+                            <Btn size="sm" color="danger" onClick={async () => {
+                              if (window.confirm(T(`Delete ${emp.name}? This cannot be undone.`, `حذف ${emp.name}؟ لا يمكن التراجع.`))) {
+                                await db("attendance", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("loans", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("excuse_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("leave_requests", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("payroll", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("employee_shifts", "DELETE", null, `?employee_id=eq.${emp.id}`);
+                                await db("employees", "DELETE", null, `?id=eq.${emp.id}`);
+                                await loadAll();
+                              }
+                            }}>🗑️</Btn>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2223,13 +2254,57 @@ export default function App() {
             }}>{saving ? <span className="spinner" /> : T("💾 Save & Generate Payslip", "💾 حفظ وإنشاء مسير الراتب")}</Btn>
           </div>
         </Modal>
+
+        {/* Edit Payment ID Modal — admin & accountant */}
+        <Modal show={activeModal === "editPaymentId"} onClose={closeModal} title={T("🏦 Payment Info", "🏦 معلومات الدفع")}>
+          <div className="info-box" style={{ marginBottom: 16 }}>
+            <strong>{modalData.name}</strong> — <span style={{ color: "var(--t3)", fontSize: 12 }}>{modalData.employee_code}</span>
+          </div>
+          <div style={{ background: "var(--infob)", border: "1px solid var(--info)", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <div style={{ fontWeight: 600, color: "var(--info)", marginBottom: 12, fontSize: 13 }}>💳 {T("Payment Company Details", "بيانات شركة الدفع")}</div>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label>{T("Payment Company ID (National ID / Account No.)", "كود شركة الدفع (رقم قومي / حساب)")}</label>
+              <input
+                value={modalData.payment_id || ""}
+                onChange={e => setModalData({ ...modalData, payment_id: e.target.value })}
+                placeholder="e.g. 29111262102853"
+                style={{ fontFamily: "monospace", letterSpacing: 1 }}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>{T("Payment Mobile Number", "رقم الهاتف للدفع")}</label>
+              <input
+                value={modalData.payment_mobile || ""}
+                onChange={e => setModalData({ ...modalData, payment_mobile: e.target.value })}
+                placeholder="+201XXXXXXXXX"
+              />
+            </div>
+          </div>
+          <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>📊 {T("Current Salary Summary", "ملخص الراتب الحالي")}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+              <div style={{ color: "var(--t3)" }}>{T("Base Salary","الراتب الأساسي")}</div>
+              <div style={{ color: "var(--ok)", fontWeight: 600 }}>{(modalData.salary || 0).toLocaleString()} EGP</div>
+              <div style={{ color: "var(--t3)" }}>{T("Net Salary","صافي الراتب")}</div>
+              <div style={{ color: "var(--acc)", fontWeight: 700 }}>{(modalData.net_salary || modalData.salary || 0).toLocaleString()} EGP</div>
+            </div>
+          </div>
+          <div className="form-actions">
+            <Btn color="outline" onClick={closeModal}>{T("Cancel", "إلغاء")}</Btn>
+            <Btn color="primary" disabled={saving} onClick={async () => {
+              setSaving(true);
+              const result = await db("employees", "PATCH", {
+                payment_id: modalData.payment_id || null,
+                payment_mobile: modalData.payment_mobile || null,
+              }, `?id=eq.${modalData.id}`);
+              if (!result) alert(T("Failed to save. Check permissions.", "فشل الحفظ. تحقق من الصلاحيات."));
+              await loadAll(); setSaving(false); closeModal();
+            }}>{saving ? <span className="spinner" /> : T("💾 Save Payment Info", "💾 حفظ بيانات الدفع")}</Btn>
+          </div>
+        </Modal>
       </div>
     );
   };
-
-  // ============================================================
-  // ATTENDANCE
-  // ============================================================
   const renderAttendance = () => {
     const timeStr = now.toLocaleTimeString(ar ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const dateStr = now.toLocaleDateString(ar ? "ar-EG" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -3973,7 +4048,7 @@ export default function App() {
   const allNavItems = [
     { id: "dashboard", icon: "🏠", label: T("Dashboard", "لوحة التحكم"), roles: ["admin","hr","accountant"] },
     { id: "analytics", icon: "📊", label: T("Analytics", "التحليلات"), roles: ["admin","hr","accountant"] },
-    { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr"], badge: pendingEmployees || null },
+    { id: "employees", icon: "👥", label: T("Employees", "الموظفون"), roles: ["admin","hr","accountant"], badge: pendingEmployees || null },
     { id: "shifts", icon: "🕐", label: T("Shifts", "المناوبات"), roles: ["admin","hr"] },
     { id: "attendance", icon: "🕐", label: T("Attendance", "الحضور"), roles: ["admin","hr","accountant","employee"] },
     { id: "payroll", icon: "💰", label: T("Payroll", "الرواتب"), roles: ["admin","hr","accountant","employee"] },
