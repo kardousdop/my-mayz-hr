@@ -2424,64 +2424,76 @@ export default function App() {
                     </div>
                 }
 
-                <div className="verify-steps">
-                  {/* GPS Step — always shown */}
-                  <div className={`verify-step ${gpsErr ? "error" : gpsOk ? "success" : ""}`}>
-                    <span className="verify-icon">{gpsOk ? "✅" : gpsErr ? "❌" : verifying === "gps" ? "⏳" : "⭕"}</span>
-                    <div style={{ flex: 1, textAlign: "left" }}>
-                      <div>{gpsOk ? T("Location Verified", "تم التحقق من الموقع") : gpsErr ? T("GPS Error", "خطأ GPS") : T("GPS Location", "موقع GPS")}</div>
-                      {gpsOk && gpsLoc && <div className="gps-coords">📍 {gpsLoc.lat.toFixed(5)}, {gpsLoc.lng.toFixed(5)} (±{Math.round(gpsLoc.accuracy)}m)</div>}
-                      {gpsErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{gpsErr}</div>}
-                    </div>
-                  </div>
+                {(() => {
+                  const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
+                  const d = new Date().getDay();
 
-                  {/* Camera Photo Step — hidden for remote/hybrid-saturday */}
-                  {(() => {
-                    const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
-                    const d = new Date().getDay();
-                    const noCamera = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
-                    if (noCamera) return (
-                      <div className="verify-step" style={{ opacity: 0.5 }}>
-                        <span className="verify-icon">⛔</span>
+                  // No verification mode — show a simple ready message instead of steps
+                  if (wm === "no_verify") return (
+                    <div style={{ marginTop: 18, padding: "14px 16px", background: "var(--okb)", border: "1px solid var(--ok)", borderRadius: 10, textAlign: "center" }}>
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>🆓</div>
+                      <div style={{ fontWeight: 700, color: "var(--ok)", fontSize: 15 }}>{T("No verification required", "لا يلزم أي تحقق")}</div>
+                      <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 4 }}>{T("Tap Sign In to record your attendance", "اضغط تسجيل الحضور لتسجيل حضورك")}</div>
+                    </div>
+                  );
+
+                  const noCamera = wm === "remote" || (wm === "hybrid" && (d === 5 || d === 6));
+                  return (
+                    <div className="verify-steps">
+                      {/* GPS Step */}
+                      <div className={`verify-step ${gpsErr ? "error" : gpsOk ? "success" : ""}`}>
+                        <span className="verify-icon">{gpsOk ? "✅" : gpsErr ? "❌" : verifying === "gps" ? "⏳" : "⭕"}</span>
                         <div style={{ flex: 1, textAlign: "left" }}>
-                          <div style={{ color: "var(--t3)" }}>{T("Camera — not required for your work mode", "الكاميرا — غير مطلوبة لنمط عملك")}</div>
+                          <div>{gpsOk ? T("Location Verified", "تم التحقق من الموقع") : gpsErr ? T("GPS Error", "خطأ GPS") : T("GPS Location", "موقع GPS")}</div>
+                          {gpsOk && gpsLoc && <div className="gps-coords">📍 {gpsLoc.lat.toFixed(5)}, {gpsLoc.lng.toFixed(5)} (±{Math.round(gpsLoc.accuracy)}m)</div>}
+                          {gpsErr && <div className="gps-coords" style={{ color: "var(--err)" }}>{gpsErr}</div>}
                         </div>
                       </div>
-                    );
-                    return (
-                      <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
-                        <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
-                        <div style={{ flex: 1, textAlign: "left" }}>
-                          <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("📵 Camera Access Denied", "📵 تم رفض الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
-                          {photoErr && (
-                            <div style={{ marginTop: 10 }}>
-                              <div style={{ background: "rgba(239,68,68,0.15)", border: "1px solid var(--err)", borderRadius: 10, padding: "12px 14px", fontSize: 12, lineHeight: 1.9 }}>
-                                <div style={{ fontWeight: 700, color: "var(--err)", marginBottom: 8, fontSize: 13 }}>
-                                  🔴 {T("Camera blocked — please enable it:", "الكاميرا محظورة — يرجى تفعيلها:")}
-                                </div>
-                                <div>📱 <strong>iPhone / Safari:</strong></div>
-                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Settings → Safari → Camera → Allow", "الإعدادات ← Safari ← الكاميرا ← سماح")}</div>
-                                <div style={{ marginTop: 6 }}>🤖 <strong>Android / Chrome:</strong></div>
-                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Tap 🔒 in address bar → Camera → Allow", "اضغط 🔒 في شريط العنوان ← الكاميرا ← اسمح")}</div>
-                                <div style={{ marginTop: 6 }}>💻 <strong>Desktop / Chrome:</strong></div>
-                                <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Click 🔒 left of URL → Camera → Allow → reload page", "اضغط 🔒 يسار الرابط ← الكاميرا ← اسمح ← أعد تحميل")}</div>
-                                <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,158,11,0.15)", borderRadius: 6, color: "var(--warn)", fontWeight: 600 }}>
-                                  ✅ {T("After allowing → tap '🔄 Try Again' below", "بعد السماح → اضغط '🔄 حاول مرة أخرى' أدناه")}
+
+                      {/* Camera Step */}
+                      {noCamera ? (
+                        <div className="verify-step" style={{ opacity: 0.5 }}>
+                          <span className="verify-icon">⛔</span>
+                          <div style={{ flex: 1, textAlign: "left" }}>
+                            <div style={{ color: "var(--t3)" }}>{T("Camera — not required for your work mode", "الكاميرا — غير مطلوبة لنمط عملك")}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`verify-step ${photoErr ? "error" : photoOk ? "success" : ""}`}>
+                          <span className="verify-icon">{photoOk ? "✅" : photoErr ? "❌" : verifying === "photo" ? "⏳" : "⭕"}</span>
+                          <div style={{ flex: 1, textAlign: "left" }}>
+                            <div>{photoOk ? T("📸 Photo Captured ✓", "📸 تم التقاط الصورة ✓") : photoErr ? T("📵 Camera Access Denied", "📵 تم رفض الكاميرا") : verifying === "photo" ? T("Opening camera...", "جاري فتح الكاميرا...") : T("Face Photo", "صورة الوجه")}</div>
+                            {photoErr && (
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ background: "rgba(239,68,68,0.15)", border: "1px solid var(--err)", borderRadius: 10, padding: "12px 14px", fontSize: 12, lineHeight: 1.9 }}>
+                                  <div style={{ fontWeight: 700, color: "var(--err)", marginBottom: 8, fontSize: 13 }}>
+                                    🔴 {T("Camera blocked — please enable it:", "الكاميرا محظورة — يرجى تفعيلها:")}
+                                  </div>
+                                  <div>📱 <strong>iPhone / Safari:</strong></div>
+                                  <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Settings → Safari → Camera → Allow", "الإعدادات ← Safari ← الكاميرا ← سماح")}</div>
+                                  <div style={{ marginTop: 6 }}>🤖 <strong>Android / Chrome:</strong></div>
+                                  <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Tap 🔒 in address bar → Camera → Allow", "اضغط 🔒 في شريط العنوان ← الكاميرا ← اسمح")}</div>
+                                  <div style={{ marginTop: 6 }}>💻 <strong>Desktop / Chrome:</strong></div>
+                                  <div style={{ paddingLeft: 20, color: "var(--t2)" }}>{T("Click 🔒 left of URL → Camera → Allow → reload page", "اضغط 🔒 يسار الرابط ← الكاميرا ← اسمح ← أعد تحميل")}</div>
+                                  <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,158,11,0.15)", borderRadius: 6, color: "var(--warn)", fontWeight: 600 }}>
+                                    ✅ {T("After allowing → tap '🔄 Try Again' below", "بعد السماح → اضغط '🔄 حاول مرة أخرى' أدناه")}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
-                          {/* Photo only visible to admin/hr */}
-                          {photo && (role === "admin" || role === "hr") && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
+                            )}
+                            {photo && (role === "admin" || role === "hr") && <img src={photo} alt="captured" style={{ width: 80, height: 60, borderRadius: 6, marginTop: 8, objectFit: "cover", border: "2px solid var(--ok)" }} />}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {(gpsErr || photoErr) && !clockedIn && (
-                  <button className="clock-btn in" style={{ marginTop: 16, width: "100%", padding: "12px" }} onClick={handleClockIn}>{T("🔄 Try Again", "🔄 حاول مرة أخرى")}</button>
-                )}
+                {(gpsErr || photoErr) && !clockedIn && (() => {
+                  const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
+                  if (wm === "no_verify") return null;
+                  return <button className="clock-btn in" style={{ marginTop: 16, width: "100%", padding: "12px" }} onClick={handleClockIn}>{T("🔄 Try Again", "🔄 حاول مرة أخرى")}</button>;
+                })()}
               </div>
 
               {/* Clock Out */}
