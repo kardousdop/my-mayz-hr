@@ -899,6 +899,9 @@ export default function App() {
   // Attendance flow state
   const [clockedIn, setClockedIn] = useState(false);
   const [clockInTime, setClockInTime] = useState(null);
+  const [autoSignIn, setAutoSignIn] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("mymayz_auto_signin") || "false"); } catch { return false; }
+  });
   const [gpsOk, setGpsOk] = useState(false);
   const [gpsLoc, setGpsLoc] = useState(null);
   const [gpsErr, setGpsErr] = useState("");
@@ -997,6 +1000,83 @@ export default function App() {
   }, [loggedIn]);
 
   useEffect(() => { if (loggedIn) loadAll(); }, [loggedIn]);
+
+  // ── Auto Sign-In/Out via GPS watcher ──
+  useEffect(() => {
+    if (!loggedIn || !autoSignIn || !navigator.geolocation) return;
+    const workMode = currentEmployee?.work_mode || "office";
+    if (workMode === "no_verify") return; // no_verify doesn't need GPS
+
+    let watchId = null;
+    let lastAutoAction = null; // prevent rapid repeated triggers
+    let insideLocation = null; // track which location we're currently inside
+
+    const checkLocation = async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const freshLocs = getApprovedLocations();
+      const empApprovedLocs = (() => {
+        try {
+          const v = currentEmployee?.approved_locations;
+          if (!v) return freshLocs.map(l => l.id);
+          return typeof v === "string" ? JSON.parse(v) : v;
+        } catch { return freshLocs.map(l => l.id); }
+      })();
+      const toCheck = freshLocs.filter(l => empApprovedLocs.includes(l.id));
+      const matched = toCheck.find(l => distKm(lat, lng, l.lat, l.lng) <= l.radius);
+      const now = Date.now();
+
+      // Entered a location — auto sign in
+      if (matched && !clockedIn && insideLocation !== matched.id) {
+        if (lastAutoAction && now - lastAutoAction < 60000) return; // debounce 1 min
+        insideLocation = matched.id;
+        lastAutoAction = now;
+        console.log("🤖 Auto sign-in triggered at", matched.name);
+        const clockTime = new Date();
+        setGpsOk(true);
+        setPhotoOk(true);
+        await doSaveClockIn(clockTime, { lat, lng, accuracy: pos.coords.accuracy }, matched.name, null);
+      }
+
+      // Left all locations — auto sign out
+      if (!matched && clockedIn && insideLocation) {
+        if (lastAutoAction && now - lastAutoAction < 60000) return; // debounce 1 min
+        insideLocation = null;
+        lastAutoAction = now;
+        console.log("🤖 Auto sign-out triggered — left location");
+        // Fetch and close the open attendance record
+        const today = new Date().toISOString().split("T")[0];
+        const empId = currentEmployee?.id;
+        const freshAtt = await db("attendance", "GET", null, `?employee_id=eq.${empId}&date=eq.${today}&check_out=is.null&select=*`);
+        const rec = freshAtt?.[0];
+        if (rec) {
+          const clockTime = new Date();
+          const hours = Math.round(((clockTime - new Date(rec.check_in)) / 3600000) * 100) / 100;
+          const es = empShifts.find(x => x.employee_id === empId);
+          const sh = es ? shifts.find(s => s.id === es.shift_id) : null;
+          const incomplete = hours < (sh?.min_hours || 8);
+          await db("attendance", "PATCH", {
+            check_out: clockTime.toISOString(),
+            hours_worked: hours,
+            checkout_gps_lat: lat,
+            checkout_gps_lng: lng,
+            status: incomplete ? "incomplete" : rec.status,
+            notes: `Auto sign-out: left ${rec.location_label || "location"} at ${clockTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`,
+          }, `?id=eq.${rec.id}`);
+          setClockedIn(false); setClockInTime(null); setLocLabel(null);
+          await loadAll();
+        }
+      }
+    };
+
+    watchId = navigator.geolocation.watchPosition(
+      checkLocation,
+      err => console.warn("Auto GPS error:", err.message),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+
+    return () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); };
+  }, [loggedIn, autoSignIn, clockedIn, currentEmployee]);
 
   const loadAll = async () => {
     const [emps, att, ln, ex, lv, pay, sh, esh] = await Promise.all([
@@ -2389,6 +2469,33 @@ export default function App() {
               {/* Clock In */}
               <div className="clock-card in">
                 <div style={{ fontSize: 14, color: "var(--t2)", marginBottom: 4 }}>{T("Sign In", "تسجيل الحضور")}</div>
+
+                {/* Auto Sign-In Toggle */}
+                {(() => {
+                  const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
+                  if (wm === "no_verify") return null;
+                  return (
+                    <div onClick={() => {
+                      const newVal = !autoSignIn;
+                      setAutoSignIn(newVal);
+                      localStorage.setItem("mymayz_auto_signin", JSON.stringify(newVal));
+                    }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", marginBottom: 10, background: autoSignIn ? "var(--accg)" : "var(--bg2)", border: `1.5px solid ${autoSignIn ? "var(--acc)" : "var(--border)"}`, borderRadius: 20, cursor: "pointer", transition: "all 0.2s", userSelect: "none" }}>
+                      <div style={{ width: 36, height: 20, background: autoSignIn ? "var(--acc)" : "var(--border)", borderRadius: 10, position: "relative", flexShrink: 0, transition: "all 0.2s" }}>
+                        <div style={{ width: 14, height: 14, background: "white", borderRadius: "50%", position: "absolute", top: 3, left: autoSignIn ? 19 : 3, transition: "all 0.2s" }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: autoSignIn ? "var(--acc)" : "var(--t2)" }}>
+                          🤖 {autoSignIn ? T("Auto Sign-In: ON", "تسجيل تلقائي: مفعّل") : T("Auto Sign-In: OFF", "تسجيل تلقائي: معطّل")}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--t3)" }}>
+                          {autoSignIn
+                            ? T("Will auto sign-in when you arrive at your location", "سيسجل دخولك تلقائياً عند وصولك لموقع العمل")
+                            : T("Tap to enable automatic sign-in by GPS", "اضغط لتفعيل التسجيل التلقائي بالـ GPS")}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* Work mode badge */}
                 {(() => {
                   const wm = currentEmployee?.work_mode || employees.find(e => e.id === currentEmployee?.id)?.work_mode || "office";
