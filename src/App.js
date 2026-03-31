@@ -1585,7 +1585,7 @@ export default function App() {
                         <td style={{ color: "var(--ok)", fontWeight: 600 }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                         <td style={{ color: a.check_out ? "var(--err)" : "var(--t3)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : <span style={{ fontSize: 11 }}>🟢 {T("Still in","داخل")}</span>}</td>
                         <td style={{ color: "var(--t2)", fontSize: 12 }}>{hrs}</td>
-                        <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 22 ? a.location_label.substring(0,22)+"…" : a.location_label}</span> : "—"}</td>
+                        <td>{a.location_label ? <span className="badge blue" title={a.location_label} style={{ fontSize: 11, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 200, display: "inline-block", lineHeight: 1.4 }}>{a.location_label}</span> : "—"}</td>
                         <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
                         <td><span className={`badge ${statusBadge}`}>{a.status}</span></td>
                         <td>{a.face_photo ? <img src={a.face_photo} alt="face" className="photo-thumb" onClick={() => setPhotoPreview(a.face_photo)} /> : "—"}</td>
@@ -2688,8 +2688,9 @@ export default function App() {
 
               <div className="form-group" style={{ marginTop: 8 }}>
                 <label>{T("Reason *", "السبب *")}</label>
-                <textarea rows={2} value={modalData.outsideReason || ""} onChange={e => setModalData({ ...modalData, outsideReason: e.target.value })}
-                  placeholder={T("Why are you working from this location today?", "لماذا تعمل من هذا الموقع اليوم؟")} />
+                <textarea rows={3} value={modalData.outsideReason || ""} onChange={e => setModalData({ ...modalData, outsideReason: e.target.value })}
+                  placeholder={T("Why are you working from this location today?", "لماذا تعمل من هذا الموقع اليوم؟")}
+                  style={{ width: "100%", resize: "vertical", fontSize: 14, lineHeight: 1.6, padding: "10px 12px" }} />
               </div>
 
               <div className="form-actions">
@@ -2888,7 +2889,7 @@ export default function App() {
                             <td style={{ color: isLate ? "var(--warn)" : "var(--ok)", fontWeight: isLate ? 700 : 400 }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}{isLate ? " ⚠️" : ""}</td>
                             <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                             <td style={{ color: isIncomplete ? "var(--err)" : "var(--t2)", fontWeight: isIncomplete ? 700 : 400 }}>{a.hours_worked ? `${a.hours_worked}h` : "—"}{isIncomplete ? " ⚠️" : ""}</td>
-                            <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 20 ? a.location_label.substring(0, 20) + "..." : a.location_label}</span> : "—"}</td>
+                            <td>{a.location_label ? <span className="badge blue" title={a.location_label} style={{ fontSize: 11, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 200, display: "inline-block", lineHeight: 1.4 }}>{a.location_label}</span> : "—"}</td>
                             <td style={{ fontSize: 11, color: "var(--t3)" }}>{a.gps_lat ? `${Number(a.gps_lat).toFixed(4)}, ${Number(a.gps_lng).toFixed(4)}` : "—"}</td>
                             <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : a.status === "on_leave" ? "blue" : "gray"}`}>{a.status === "on_leave" ? "🏖️ On Leave" : a.status}</span></td>
                             <td style={{ fontSize: 11, color: "var(--warn)" }}>{a.notes || "—"}</td>
@@ -3488,7 +3489,7 @@ export default function App() {
                               <td style={{ color: "var(--ok)" }}>{a.check_in ? new Date(a.check_in).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                               <td style={{ color: "var(--err)" }}>{a.check_out ? new Date(a.check_out).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : <span style={{ color: "var(--warn)" }}>⏳ {T("Working", "جاري العمل")}</span>}</td>
                               <td>{a.hours_worked ? `${a.hours_worked}h` : "—"}</td>
-                              <td>{a.location_label ? <span className="badge blue" style={{ fontSize: 11 }}>{a.location_label.length > 15 ? a.location_label.substring(0, 15) + "..." : a.location_label}</span> : "—"}</td>
+                              <td>{a.location_label ? <span className="badge blue" title={a.location_label} style={{ fontSize: 11, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 200, display: "inline-block", lineHeight: 1.4 }}>{a.location_label}</span> : "—"}</td>
                               <td><span className={`badge ${a.status === "present" ? "green" : a.status === "late" || a.status === "very_late" ? "yellow" : a.status === "incomplete" ? "red" : a.status === "on_leave" ? "blue" : "gray"}`}>{a.status === "on_leave" ? "🏖️ On Leave" : a.status}</span></td>
                             </tr>
                           ))}
