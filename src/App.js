@@ -300,8 +300,8 @@ const css = `
   .gps-coords{font-size:11px;color:var(--t3);margin-top:3px}
 
   /* ── MODAL ── */
-  .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;z-index:99999;padding:40px 16px 40px;backdrop-filter:blur(4px);overflow-y:auto}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease;flex-shrink:0}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;z-index:99999;padding:20px;backdrop-filter:blur(4px);overflow-y:auto}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease;margin:auto}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
   .modal-title{font-size:17px;font-weight:700}
 
@@ -427,8 +427,7 @@ const css = `
 // ============================================================
 function Modal({ show, onClose, title, children, width }) {
   useEffect(() => {
-    if (show) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
+    document.body.style.overflow = show ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [show]);
   if (!show) return null;
@@ -3141,7 +3140,6 @@ dopay_full_name: modalData.dopay_full_name || null,
           </div>
         </div>
 
-        {/* ── Edit Payslip Modal ── */}
         <Modal show={activeModal === "editPayroll"} onClose={closeModal} title={T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
           {activeModal === "editPayroll" && (() => {
             const emp = employees.find(e => e.id === modalData.employee_id);
@@ -3185,8 +3183,6 @@ dopay_full_name: modalData.dopay_full_name || null,
             </>);
           })()}
         </Modal>
-
-        {/* ── Create Payslip Modal ── */}
         <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
           {activeModal === "createPayroll" && (<>
             <div className="form-group"><label>{T("Employee","الموظف")}</label>
