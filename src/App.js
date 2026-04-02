@@ -426,10 +426,6 @@ const css = `
 // MODAL
 // ============================================================
 function Modal({ show, onClose, title, children, width }) {
-  useEffect(() => {
-    document.body.style.overflow = show ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [show]);
   if (!show) return null;
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -3174,7 +3170,15 @@ dopay_full_name: modalData.dopay_full_name || null,
                           <td>
                             <div style={{ display: "flex", gap: 6 }}>
                               {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>}
-                              {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>
+                              {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>}
+                              {p.status === "pending" && (role === "admin" || role === "accountant") && (
+                                <Btn size="sm" color="outline" onClick={async () => {
+                                  if (window.confirm(T(`Skip payment for ${employees.find(e=>e.id===p.employee_id)?.name} this month?`, `تخطي دفع هذا الشهر لـ ${employees.find(e=>e.id===p.employee_id)?.name}؟`))) {
+                                    await db("payroll","PATCH",{ status:"skipped" },`?id=eq.${p.id}`);
+                                    loadAll();
+                                  }
+                                }} style={{ color: "var(--warn)", borderColor: "var(--warn)" }}>⛔ {T("Skip","تخطي")}</Btn>
+                              )}
                               {p.status === "skipped" && (
                                 <Btn size="sm" color="warning" onClick={async () => { await db("payroll","PATCH",{ status:"pending" },`?id=eq.${p.id}`); loadAll(); }}>↩️ {T("Restore","استعادة")}</Btn>
                               )}
