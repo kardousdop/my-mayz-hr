@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 // ============================================================
 // SUPABASE
@@ -300,8 +301,8 @@ const css = `
   .gps-coords{font-size:11px;color:var(--t3);margin-top:3px}
 
   /* ── MODAL ── */
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;z-index:99999;padding:20px;backdrop-filter:blur(4px);overflow-y:auto}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease;margin:auto}
+  .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;backdrop-filter:blur(4px)}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
   .modal-title{font-size:17px;font-weight:700}
 
@@ -431,7 +432,7 @@ function Modal({ show, onClose, title, children, width }) {
     return () => { document.body.style.overflow = ""; };
   }, [show]);
   if (!show) return null;
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal fade-in" style={width ? { width } : {}} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -440,7 +441,8 @@ function Modal({ show, onClose, title, children, width }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
