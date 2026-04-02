@@ -300,8 +300,8 @@ const css = `
   .gps-coords{font-size:11px;color:var(--t3);margin-top:3px}
 
   /* ── MODAL ── */
-  .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;backdrop-filter:blur(4px)}
-  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease}
+  .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;z-index:99999;padding:24px 16px;backdrop-filter:blur(4px);overflow-y:auto}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:28px;width:100%;max-width:540px;max-height:none;overflow-y:visible;box-shadow:var(--shadow-lg);animation:fadeIn 0.2s ease;margin:auto}
   .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
   .modal-title{font-size:17px;font-weight:700}
 
@@ -3145,20 +3145,21 @@ dopay_full_name: modalData.dopay_full_name || null,
         <Modal show={activeModal === "editPayroll"} onClose={closeModal} title={T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
           {(() => {
             const emp = employees.find(e => e.id === modalData.employee_id);
+            const net = calcNet(modalData);
             return (
               <>
-                {emp && <div className="info-box" style={{ marginBottom: 14 }}><strong>{emp.name}</strong> — <span style={{ color: "var(--t3)", fontSize: 12 }}>{emp.employee_code}</span></div>}
+                {emp && <div className="info-box" style={{ marginBottom: 14 }}><strong>{emp.name}</strong> — <span style={{ color:"var(--t3)", fontSize:12 }}>{emp.employee_code}</span></div>}
                 <div className="form-row">
                   <div className="form-group"><label>{T("Month","الشهر")}</label>
-                    <select value={modalData.month || thisMonth} onChange={e => setModalData({ ...modalData, month: e.target.value })}>
-                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    <select value={modalData.month || ""} onChange={e => setModalData({...modalData, month: e.target.value})}>
+                      {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                   <div className="form-group"><label>{T("Year","السنة")}</label>
-                    <input type="number" value={modalData.year || thisYear} onChange={e => setModalData({ ...modalData, year: +e.target.value })} />
+                    <input type="number" value={modalData.year || new Date().getFullYear()} onChange={e => setModalData({...modalData, year: +e.target.value})} />
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
                   {[
                     ["base_salary", T("Base Salary","الراتب الأساسي"), "ok"],
                     ["allowances",  T("Allowances","البدلات"), "ok"],
@@ -3169,44 +3170,33 @@ dopay_full_name: modalData.dopay_full_name || null,
                     ["loan_deduction", T("Loan Deduction","خصم قرض"), "err"],
                   ].map(([k, lbl, c]) => (
                     <div key={k}>
-                      <label style={{ fontSize: 12, color: `var(--${c})`, display: "block", marginBottom: 4 }}>{lbl}</label>
+                      <label style={{ fontSize:12, color:`var(--${c})`, display:"block", marginBottom:4 }}>{lbl}</label>
                       <input type="number" value={modalData[k] ?? 0}
-                        onChange={e => setModalData({ ...modalData, [k]: +e.target.value })}
-                        style={{ width: "100%", padding: "8px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, outline: "none" }} />
+                        onChange={e => setModalData({...modalData, [k]: +e.target.value})}
+                        style={{ width:"100%", padding:"8px", background:"var(--bg2)", border:"1px solid var(--border)", borderRadius:6, color:"var(--t1)", fontFamily:"inherit", fontSize:13, outline:"none" }} />
                     </div>
                   ))}
                 </div>
                 <div className="net-salary-box">
-                  <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
+                  <div className="amount">{net.toLocaleString()} EGP</div>
                   <div className="label">{T("Net Salary","صافي الراتب")}</div>
                 </div>
                 <div className="form-actions">
                   <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
                   <Btn color="primary" disabled={saving} onClick={async () => {
                     setSaving(true);
-                    const net = calcNet(modalData);
-                    await db("payroll","PATCH", { ...modalData, net_salary: net }, `?id=eq.${modalData.id}`);
+                    await db("payroll","PATCH", {...modalData, net_salary: net}, `?id=eq.${modalData.id}`);
                     if (emp && modalData.base_salary) {
-                      await db("employees","PATCH", {
-                        salary: modalData.base_salary,
-                        allowances: modalData.allowances || 0,
-                        bonuses: modalData.bonuses || 0,
-                        deductions: modalData.deductions || 0,
-                        tax: modalData.tax || 0,
-                        insurance: modalData.insurance || 0,
-                        net_salary: net,
-                      }, `?id=eq.${emp.id}`);
+                      await db("employees","PATCH", { salary: modalData.base_salary, allowances: modalData.allowances||0, bonuses: modalData.bonuses||0, deductions: modalData.deductions||0, tax: modalData.tax||0, insurance: modalData.insurance||0, net_salary: net }, `?id=eq.${emp.id}`);
                     }
-                    // Fast refresh — only payroll + employees, not full loadAll
                     const [freshPay, freshEmps] = await Promise.all([
                       db("payroll","GET",null,"?select=*&order=year.desc,month.desc"),
                       db("employees","GET",null,"?select=*&order=name"),
                     ]);
                     if (freshPay) setPayroll(freshPay);
                     if (freshEmps) setEmployees(freshEmps);
-                    setSaving(false);
-                    closeModal();
-                  }}>{saving ? <span className="spinner" /> : T("💾 Save","💾 حفظ")}</Btn>
+                    setSaving(false); closeModal();
+                  }}>{saving ? <span className="spinner"/> : T("💾 Save","💾 حفظ")}</Btn>
                 </div>
               </>
             );
@@ -3215,41 +3205,27 @@ dopay_full_name: modalData.dopay_full_name || null,
 
         {/* ── Create Payslip Modal ── */}
         <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
-          <div className="form-group">
-            <label>{T("Employee","الموظف")}</label>
-            <select value={modalData.employee_id || ""} onChange={e => {
-              const emp = employees.find(x => x.id === +e.target.value);
-              setModalData({ ...modalData, employee_id: +e.target.value, base_salary: emp?.salary||0, allowances: emp?.allowances||0, bonuses: emp?.bonuses||0, deductions: emp?.deductions||0, tax: emp?.tax||0, insurance: emp?.insurance||0 });
-            }}>
+          <div className="form-group"><label>{T("Employee","الموظف")}</label>
+            <select value={modalData.employee_id||""} onChange={e => { const emp=employees.find(x=>x.id===+e.target.value); setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0}); }}>
               <option value="">{T("Select employee...","اختر الموظف...")}</option>
-              {employees.filter(e => e.status === "active").map(emp => <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
+              {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
             </select>
           </div>
           <div className="form-row">
             <div className="form-group"><label>{T("Month","الشهر")}</label>
-              <select value={modalData.month || thisMonth} onChange={e => setModalData({ ...modalData, month: e.target.value })}>
-                {months.map(m => <option key={m} value={m}>{m}</option>)}
+              <select value={modalData.month||""} onChange={e=>setModalData({...modalData,month:e.target.value})}>
+                {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m=><option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div className="form-group"><label>{T("Year","السنة")}</label>
-              <input type="number" value={modalData.year || thisYear} onChange={e => setModalData({ ...modalData, year: +e.target.value })} />
+              <input type="number" value={modalData.year||new Date().getFullYear()} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-            {[
-              ["base_salary", T("Base Salary","الراتب الأساسي"), "ok"],
-              ["allowances",  T("Allowances","البدلات"), "ok"],
-              ["bonuses",     T("Bonuses","المكافآت"), "ok"],
-              ["deductions",  T("Deductions","الخصومات"), "err"],
-              ["tax",         T("Tax","الضريبة"), "err"],
-              ["insurance",   T("Insurance","التأمين"), "err"],
-              ["loan_deduction", T("Loan Deduction","خصم قرض"), "err"],
-            ].map(([k, lbl, c]) => (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+            {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
               <div key={k}>
-                <label style={{ fontSize: 12, color: `var(--${c})`, display: "block", marginBottom: 4 }}>{lbl}</label>
-                <input type="number" value={modalData[k] ?? 0}
-                  onChange={e => setModalData({ ...modalData, [k]: +e.target.value })}
-                  style={{ width: "100%", padding: "8px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, outline: "none" }} />
+                <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
+                <input type="number" value={modalData[k]??0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})} style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} />
               </div>
             ))}
           </div>
@@ -3259,27 +3235,16 @@ dopay_full_name: modalData.dopay_full_name || null,
           </div>
           <div className="form-actions">
             <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-            <Btn color="primary" disabled={saving || !modalData.employee_id} onClick={async () => {
+            <Btn color="primary" disabled={saving||!modalData.employee_id} onClick={async()=>{
               setSaving(true);
               const net = calcNet(modalData);
-              await db("payroll","POST", { ...modalData, net_salary: net, status: "pending" });
-              const emp = employees.find(e => e.id === modalData.employee_id);
-              if (emp && modalData.base_salary) {
-                await db("employees","PATCH", {
-                  salary: modalData.base_salary,
-                  allowances: modalData.allowances || 0,
-                  bonuses: modalData.bonuses || 0,
-                  deductions: modalData.deductions || 0,
-                  tax: modalData.tax || 0,
-                  insurance: modalData.insurance || 0,
-                  net_salary: net,
-                }, `?id=eq.${emp.id}`);
-              }
+              await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
+              const emp = employees.find(e=>e.id===modalData.employee_id);
+              if (emp && modalData.base_salary) { await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`); }
               const freshPay = await db("payroll","GET",null,"?select=*&order=year.desc,month.desc");
               if (freshPay) setPayroll(freshPay);
-              setSaving(false);
-              closeModal();
-            }}>{saving ? <span className="spinner" /> : T("💾 Save","💾 حفظ")}</Btn>
+              setSaving(false); closeModal();
+            }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
           </div>
         </Modal>
       </div>
