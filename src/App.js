@@ -428,29 +428,18 @@ const css = `
 function Modal({ show, onClose, title, children, width }) {
   useEffect(() => {
     if (show) {
-      // Save scroll position and lock body without causing page jump
-      const scrollY = window.scrollY;
-      document.body.style.position = "fixed";
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = "100%";
-      document.body.style.overflow = "hidden";
+      const y = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = '-' + y + 'px';
+      document.body.style.width = '100%';
     } else {
-      // Restore scroll position
-      const scrollY = parseInt(document.body.style.top || "0") * -1;
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.width = "";
-      document.body.style.overflow = "";
-      window.scrollTo(0, scrollY);
+      const y = parseInt(document.body.style.top || '0') * -1;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      if (y) window.scrollTo(0, y);
     }
-    return () => {
-      const scrollY = parseInt(document.body.style.top || "0") * -1;
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.width = "";
-      document.body.style.overflow = "";
-      if (scrollY) window.scrollTo(0, scrollY);
-    };
+    return () => { document.body.style.position=''; document.body.style.top=''; document.body.style.width=''; };
   }, [show]);
   if (!show) return null;
   return (
@@ -3162,25 +3151,80 @@ dopay_full_name: modalData.dopay_full_name || null,
           </div>
         </div>
 
-        {/* Manual create/edit payslip modals */}
         {/* ── Edit Payslip Modal ── */}
         <Modal show={activeModal === "editPayroll"} onClose={closeModal} title={T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
-          {(() => {
+          {activeModal === "editPayroll" && (() => {
             const emp = employees.find(e => e.id === modalData.employee_id);
             const net = calcNet(modalData);
-            return (<>
-              {emp && <div className="info-box" style={{ marginBottom:14 }}><strong>{emp.name}</strong> — <span style={{ color:"var(--t3)", fontSize:12 }}>{emp.employee_code}</span></div>}
+            return (
+              <>
+                {emp && <div className="info-box" style={{ marginBottom:14 }}><strong>{emp.name}</strong> — <span style={{ color:"var(--t3)",fontSize:12 }}>{emp.employee_code}</span></div>}
+                <div className="form-row">
+                  <div className="form-group"><label>{T("Month","الشهر")}</label>
+                    <select value={modalData.month||""} onChange={e=>setModalData({...modalData,month:e.target.value})}>
+                      {months.map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>{T("Year","السنة")}</label>
+                    <input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+                  {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
+                    <div key={k}>
+                      <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
+                      <input type="number" value={modalData[k]??0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})}
+                        style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} />
+                    </div>
+                  ))}
+                </div>
+                <div className="net-salary-box">
+                  <div className="amount">{net.toLocaleString()} EGP</div>
+                  <div className="label">{T("Net Salary","صافي الراتب")}</div>
+                </div>
+                <div className="form-actions">
+                  <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
+                  <Btn color="primary" disabled={saving} onClick={async()=>{
+                    setSaving(true);
+                    await db("payroll","PATCH",{...modalData,net_salary:net},`?id=eq.${modalData.id}`);
+                    if (emp && modalData.base_salary) {
+                      await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);
+                    }
+                    const [p2,e2] = await Promise.all([
+                      db("payroll","GET",null,"?select=*&order=year.desc,month.desc"),
+                      db("employees","GET",null,"?select=*&order=name"),
+                    ]);
+                    if (p2) setPayroll(p2);
+                    if (e2) setEmployees(e2);
+                    setSaving(false); closeModal();
+                  }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+
+        {/* ── Create Payslip Modal ── */}
+        <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
+          {activeModal === "createPayroll" && (
+            <>
+              <div className="form-group"><label>{T("Employee","الموظف")}</label>
+                <select value={modalData.employee_id||""} onChange={e=>{const emp=employees.find(x=>x.id===+e.target.value);setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0});}}>
+                  <option value="">{T("Select employee...","اختر الموظف...")}</option>
+                  {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
+                </select>
+              </div>
               <div className="form-row">
                 <div className="form-group"><label>{T("Month","الشهر")}</label>
-                  <select value={modalData.month||""} onChange={e=>setModalData({...modalData,month:e.target.value})}>
-                    {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m=><option key={m} value={m}>{m}</option>)}
+                  <select value={modalData.month||thisMonth} onChange={e=>setModalData({...modalData,month:e.target.value})}>
+                    {months.map(m=><option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div className="form-group"><label>{T("Year","السنة")}</label>
-                  <input type="number" value={modalData.year||new Date().getFullYear()} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
+                  <input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
                 {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
                   <div key={k}>
                     <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
@@ -3190,71 +3234,24 @@ dopay_full_name: modalData.dopay_full_name || null,
                 ))}
               </div>
               <div className="net-salary-box">
-                <div className="amount">{net.toLocaleString()} EGP</div>
+                <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
                 <div className="label">{T("Net Salary","صافي الراتب")}</div>
               </div>
               <div className="form-actions">
                 <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-                <Btn color="primary" disabled={saving} onClick={async()=>{
+                <Btn color="primary" disabled={saving||!modalData.employee_id} onClick={async()=>{
                   setSaving(true);
-                  await db("payroll","PATCH",{...modalData,net_salary:net},`?id=eq.${modalData.id}`);
-                  if (emp && modalData.base_salary) {
-                    await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);
-                  }
-                  const [p2,e2] = await Promise.all([db("payroll","GET",null,"?select=*&order=year.desc,month.desc"),db("employees","GET",null,"?select=*&order=name")]);
-                  if (p2) setPayroll(p2);
-                  if (e2) setEmployees(e2);
-                  setSaving(false); closeModal();
+                  const net=calcNet(modalData);
+                  await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
+                  const emp=employees.find(e=>e.id===modalData.employee_id);
+                  if(emp&&modalData.base_salary){await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);}
+                  const p2=await db("payroll","GET",null,"?select=*&order=year.desc,month.desc");
+                  if(p2)setPayroll(p2);
+                  setSaving(false);closeModal();
                 }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
               </div>
-            </>);
-          })()}
-        </Modal>
-
-        {/* ── Create Payslip Modal ── */}
-        <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
-          <div className="form-group"><label>{T("Employee","الموظف")}</label>
-            <select value={modalData.employee_id||""} onChange={e=>{const emp=employees.find(x=>x.id===+e.target.value);setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0});}}>
-              <option value="">{T("Select employee...","اختر الموظف...")}</option>
-              {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
-            </select>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>{T("Month","الشهر")}</label>
-              <select value={modalData.month||""} onChange={e=>setModalData({...modalData,month:e.target.value})}>
-                {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>{T("Year","السنة")}</label>
-              <input type="number" value={modalData.year||new Date().getFullYear()} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-            {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
-              <div key={k}>
-                <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
-                <input type="number" value={modalData[k]??0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})}
-                  style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} />
-              </div>
-            ))}
-          </div>
-          <div className="net-salary-box">
-            <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
-            <div className="label">{T("Net Salary","صافي الراتب")}</div>
-          </div>
-          <div className="form-actions">
-            <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-            <Btn color="primary" disabled={saving||!modalData.employee_id} onClick={async()=>{
-              setSaving(true);
-              const net=calcNet(modalData);
-              await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
-              const emp=employees.find(e=>e.id===modalData.employee_id);
-              if(emp&&modalData.base_salary){await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);}
-              const p2=await db("payroll","GET",null,"?select=*&order=year.desc,month.desc");
-              if(p2)setPayroll(p2);
-              setSaving(false);closeModal();
-            }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
-          </div>
+            </>
+          )}
         </Modal>
       </div>
     );
