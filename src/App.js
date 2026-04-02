@@ -943,10 +943,6 @@ export default function App() {
   const [clockOutDone, setClockOutDone] = useState(false);
   const [clockOutVerifying, setClockOutVerifying] = useState(false);
   const [signup, setSignup] = useState(false);
-  const [payrollMonth, setPayrollMonth] = useState(() => {
-    const d = new Date();
-    return { month: ["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()], year: d.getFullYear() };
-  });
 
   // Notification settings — stored in localStorage
   const [notifSettings, setNotifSettings] = useState(() => {
@@ -1491,41 +1487,28 @@ export default function App() {
         {/* Clickable stat cards */}
         <div className="stats-grid">
           {[
-            { key: "all",      icon: "👥", color: "blue",   value: employees.length,                                                                    label: T("Total Employees","إجمالي الموظفين"),  nav: "employees" },
-            { key: "present",  icon: "✅", color: "green",  value: todayAtt.filter(a => a.check_in).length,                                             label: T("Present Today","حضور اليوم") },
-            { key: "late",     icon: "⏰", color: "yellow", value: todayAtt.filter(a => a.status === "late" || a.status === "very_late").length,          label: T("Late Today","متأخرون اليوم") },
-            { key: "still_in", icon: "🟢", color: "green",  value: todayAtt.filter(a => a.check_in && !a.check_out).length,                             label: T("Still Working","لا يزالون يعملون") },
-            { key: "requests", icon: "📋", color: "red",    value: pending,                                                                              label: T("Pending Requests","طلبات معلقة"),     nav: "selfservice" },
-            { key: "payroll",  icon: "💰", color: "purple", value: totalPayroll.toLocaleString() + " EGP",                                              label: T("Monthly Payroll","الرواتب الشهرية"),  nav: "payroll" },
-          ].map((s, i) => {
-            const isFilterable = ["present","late","still_in"].includes(s.key);
-            const isActive = dashFilter === s.key;
-            const colorMap = { blue: "var(--info)", green: "var(--ok)", yellow: "var(--warn)", red: "var(--err)", purple: "var(--acc)" };
-            return (
-              <div key={i} className="stat-card"
-                style={{
-                  cursor: (s.nav || isFilterable) ? "pointer" : "default",
-                  border: isActive ? `2px solid ${colorMap[s.color]}` : "1px solid var(--border)",
-                  background: isActive ? `rgba(${s.color === "green" ? "16,185,129" : s.color === "yellow" ? "245,158,11" : "99,102,241"},0.08)` : "var(--card)",
-                  transform: isActive ? "translateY(-3px)" : "",
-                  boxShadow: isActive ? `0 6px 20px rgba(0,0,0,0.3)` : "",
-                }}
-                onClick={() => {
-                  if (s.nav) { setPage(s.nav); return; }
-                  if (isFilterable) setDashFilter(isActive ? "all" : s.key);
-                }}>
-                <div className={`stat-icon ${s.color}`}>{s.icon}</div>
-                <div className="stat-value" style={{ fontSize: 22 }}>{s.value}</div>
-                <div className="stat-label">{s.label}</div>
-                {isFilterable && (
-                  <div style={{ fontSize: 10, color: isActive ? colorMap[s.color] : "var(--t3)", marginTop: 4, fontWeight: 600 }}>
-                    {isActive ? "✓ " + T("Active filter — click to clear","فلتر نشط — اضغط للإلغاء") : T("🔍 Click to filter table below","اضغط لتصفية الجدول أدناه")}
-                  </div>
-                )}
-                {s.nav && <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 4 }}>→ {T("Click to view","اضغط للعرض")}</div>}
-              </div>
-            );
-          })}
+            { key: "all",        icon: "👥", color: "blue",   value: employees.length,                                         label: T("Total Employees","إجمالي الموظفين"),  nav: "employees" },
+            { key: "present",    icon: "✅", color: "green",  value: todayAtt.filter(a => a.check_in).length,                  label: T("Present Today","حضور اليوم") },
+            { key: "late",       icon: "⏰", color: "yellow", value: todayAtt.filter(a => a.status === "late" || a.status === "very_late").length, label: T("Late Today","متأخرون اليوم") },
+            { key: "still_in",   icon: "🟢", color: "green",  value: todayAtt.filter(a => a.check_in && !a.check_out).length,  label: T("Still Working","لا يزالون يعملون") },
+            { key: "requests",   icon: "📋", color: "red",    value: pending,                                                  label: T("Pending Requests","طلبات معلقة"),     nav: "selfservice" },
+            { key: "payroll",    icon: "💰", color: "purple", value: totalPayroll.toLocaleString() + " EGP",                   label: T("Monthly Payroll","الرواتب الشهرية"),  nav: "payroll" },
+          ].map((s, i) => (
+            <div key={i} className="stat-card" style={{ cursor: s.nav || s.key !== "payroll" ? "pointer" : "default" }}
+              onClick={() => {
+                if (s.nav) { setPage(s.nav); return; }
+                if (["present","late","still_in","incomplete"].includes(s.key)) setDashFilter(s.key);
+              }}>
+              <div className={`stat-icon ${s.color}`}>{s.icon}</div>
+              <div className="stat-value" style={{ fontSize: 22 }}>{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+              {["present","late","still_in"].includes(s.key) && (
+                <div style={{ fontSize: 10, color: "var(--acc)", marginTop: 4, fontWeight: 500 }}>
+                  {dashFilter === s.key ? "✓ " + T("Filtered","مفلتر") : T("Click to filter ↓","اضغط للتصفية ↓")}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
         {/* Today's Attendance — filterable & sortable */}
@@ -2974,41 +2957,29 @@ dopay_full_name: modalData.dopay_full_name || null,
     const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const calcNet = d => (Number(d.base_salary)||0) + (Number(d.allowances)||0) + (Number(d.bonuses)||0) - (Number(d.deductions)||0) - (Number(d.tax)||0) - (Number(d.insurance)||0) - (Number(d.loan_deduction)||0);
 
+    // For employee role — show only their own payslips
     const myPayroll = role === "employee"
       ? payroll.filter(p => p.employee_id === currentEmployee?.id)
       : payroll;
 
-    const thisMonth = payrollMonth.month;
-    const thisYear = payrollMonth.year;
+    // Summary stats
+    const thisMonth = months[now.getMonth()];
+    const thisYear = now.getFullYear();
     const thisMonthPayroll = myPayroll.filter(p => p.month === thisMonth && p.year === thisYear);
-    const totalNet = thisMonthPayroll.filter(p => p.status !== "skipped").reduce((s, p) => s + (Number(p.net_salary) || calcNet(p)), 0);
+    const totalNet = thisMonthPayroll.reduce((s, p) => s + (Number(p.net_salary) || calcNet(p)), 0);
     const paidCount = thisMonthPayroll.filter(p => p.status === "paid").length;
     const pendingCount = thisMonthPayroll.filter(p => p.status === "pending").length;
-    const skippedCount = thisMonthPayroll.filter(p => p.status === "skipped").length;
 
     return (
       <div className="fade-in">
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
-              <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
-            </div>
-            {/* Month / Year Selector */}
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select value={thisMonth} onChange={e => setPayrollMonth(prev => ({ ...prev, month: e.target.value }))}
-                style={{ padding: "7px 12px", background: "var(--bg2)", border: "1.5px solid var(--acc)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>
-                {months.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <select value={thisYear} onChange={e => setPayrollMonth(prev => ({ ...prev, year: +e.target.value }))}
-                style={{ padding: "7px 12px", background: "var(--bg2)", border: "1.5px solid var(--acc)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>
-                {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
+            <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
           </div>
           {(role === "admin" || role === "hr") && (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <Btn color="primary" onClick={async () => {
                 // Auto-generate payslips for all active employees this month
                 const activeEmps = employees.filter(e => e.status === "active");
@@ -3030,23 +3001,6 @@ dopay_full_name: modalData.dopay_full_name || null,
                 if (created > 0) alert(T(`✅ Generated ${created} payslips for ${thisMonth} ${thisYear}`, `✅ تم إنشاء ${created} مسير رواتب لـ ${thisMonth} ${thisYear}`));
                 else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
               }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
-
-              {/* ✅ PAY ALL BUTTON */}
-              {pendingCount > 0 && (
-                <Btn color="success" onClick={async () => {
-                  if (!window.confirm(T(
-                    `Mark ALL ${pendingCount} pending employees as PAID for ${thisMonth} ${thisYear}?\n\nTotal: ${totalNet.toLocaleString()} EGP`,
-                    `تعيين جميع ${pendingCount} موظف كـ مدفوع لـ ${thisMonth} ${thisYear}؟\n\nالإجمالي: ${totalNet.toLocaleString()} جنيه`
-                  ))) return;
-                  const pending = thisMonthPayroll.filter(p => p.status === "pending");
-                  for (const p of pending) {
-                    await db("payroll","PATCH",{ status: "paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`);
-                  }
-                  await loadAll();
-                  alert(T(`✅ ${pending.length} employees marked as paid for ${thisMonth} ${thisYear}`, `✅ تم تعيين ${pending.length} موظف كـ مدفوع لـ ${thisMonth} ${thisYear}`));
-                }}>✅ {T("Pay All", "دفع الكل")} ({pendingCount})</Btn>
-              )}
-
               <Btn color="success" onClick={() => {
                 // Get last day of current month as disbursement date
                 const disbDate = new Date(thisYear, new Date().getMonth() + 1, 0);
@@ -3107,7 +3061,6 @@ dopay_full_name: modalData.dopay_full_name || null,
               { icon: "💰", color: "green", value: totalNet.toLocaleString() + " EGP", label: T("Total Payroll This Month", "إجمالي الرواتب هذا الشهر") },
               { icon: "✅", color: "green", value: paidCount, label: T("Paid", "مدفوع") },
               { icon: "⏳", color: "yellow", value: pendingCount, label: T("Pending Payment", "في انتظار الدفع") },
-              { icon: "⛔", color: "red", value: skippedCount, label: T("Skipped This Month", "متخطى هذا الشهر") },
               { icon: "👥", color: "blue", value: employees.filter(e => e.status === "active").length, label: T("Active Employees", "موظفون نشطون") },
             ].map((s, i) => (
               <div className="stat-card" key={i}>
@@ -3169,19 +3122,12 @@ dopay_full_name: modalData.dopay_full_name || null,
                         <td style={{ color: "var(--err)" }}>-{Number(p.insurance||0).toLocaleString()}</td>
                         {role !== "employee" && <td style={{ color: "var(--err)" }}>-{Number(p.loan_deduction||0).toLocaleString()}</td>}
                         <td style={{ color: "var(--ok)", fontWeight: 700, fontSize: 15 }}>{net.toLocaleString()} EGP</td>
-                        <td><span className={`badge ${p.status === "paid" ? "green" : p.status === "skipped" ? "gray" : "yellow"}`}>{p.status === "paid" ? "✅ " + T("Paid","مدفوع") : p.status === "skipped" ? "⛔ " + T("Skipped","متخطى") : "⏳ " + T("Pending","معلق")}</span></td>
+                        <td><span className={`badge ${p.status === "paid" ? "green" : "yellow"}`}>{p.status === "paid" ? "✅ " + T("Paid","مدفوع") : "⏳ " + T("Pending","معلق")}</span></td>
                         {(role === "admin" || role === "accountant") && (
                           <td>
                             <div style={{ display: "flex", gap: 6 }}>
                               {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>}
                               {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>}
-                             
-                              {p.status === "skipped" && (
-                                <Btn size="sm" color="warning" onClick={async () => { await db("payroll","PATCH",{ status:"pending" },`?id=eq.${p.id}`); loadAll(); }}>↩️ {T("Restore","استعادة")}</Btn>
-                              )}
-                              {p.status === "paid" && role === "admin" && (
-                                <Btn size="sm" color="outline" onClick={async () => { await db("payroll","PATCH",{ status:"pending", paid_at: null },`?id=eq.${p.id}`); loadAll(); }} style={{ color: "var(--warn)", borderColor: "var(--warn)", fontSize: 11 }}>↩️ {T("Unpay","إلغاء دفع")}</Btn>
-                              )}
                               {role === "admin" && <Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this payslip?","حذف مسير الراتب؟"))){ await db("payroll","DELETE",null,`?id=eq.${p.id}`); loadAll(); } }}>🗑️</Btn>}
                             </div>
                           </td>
@@ -3195,79 +3141,147 @@ dopay_full_name: modalData.dopay_full_name || null,
         </div>
 
         {/* Manual create/edit payslip modals */}
-        {["createPayroll","editPayroll"].map(mtype => (
-          <Modal key={mtype} show={activeModal === mtype} onClose={closeModal} title={mtype === "createPayroll" ? T("➕ Create Payslip","➕ إنشاء مسير راتب") : T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
-            {mtype === "createPayroll" && (
-              <div className="form-group">
-                <label>{T("Employee","الموظف")}</label>
-                <select value={modalData.employee_id||""} onChange={e => { const emp=employees.find(x=>x.id===+e.target.value); setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0}); }}>
-                  <option value="">{T("Select employee...","اختر الموظف...")}</option>
-                  {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
-                </select>
+        {/* ── Edit Payslip Modal ── */}
+        <Modal show={activeModal === "editPayroll"} onClose={closeModal} title={T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
+          {(() => {
+            const emp = employees.find(e => e.id === modalData.employee_id);
+            return (
+              <>
+                {emp && <div className="info-box" style={{ marginBottom: 14 }}><strong>{emp.name}</strong> — <span style={{ color: "var(--t3)", fontSize: 12 }}>{emp.employee_code}</span></div>}
+                <div className="form-row">
+                  <div className="form-group"><label>{T("Month","الشهر")}</label>
+                    <select value={modalData.month || thisMonth} onChange={e => setModalData({ ...modalData, month: e.target.value })}>
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>{T("Year","السنة")}</label>
+                    <input type="number" value={modalData.year || thisYear} onChange={e => setModalData({ ...modalData, year: +e.target.value })} />
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  {[
+                    ["base_salary", T("Base Salary","الراتب الأساسي"), "ok"],
+                    ["allowances",  T("Allowances","البدلات"), "ok"],
+                    ["bonuses",     T("Bonuses","المكافآت"), "ok"],
+                    ["deductions",  T("Deductions","الخصومات"), "err"],
+                    ["tax",         T("Tax","الضريبة"), "err"],
+                    ["insurance",   T("Insurance","التأمين"), "err"],
+                    ["loan_deduction", T("Loan Deduction","خصم قرض"), "err"],
+                  ].map(([k, lbl, c]) => (
+                    <div key={k}>
+                      <label style={{ fontSize: 12, color: `var(--${c})`, display: "block", marginBottom: 4 }}>{lbl}</label>
+                      <input type="number" value={modalData[k] ?? 0}
+                        onChange={e => setModalData({ ...modalData, [k]: +e.target.value })}
+                        style={{ width: "100%", padding: "8px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, outline: "none" }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="net-salary-box">
+                  <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
+                  <div className="label">{T("Net Salary","صافي الراتب")}</div>
+                </div>
+                <div className="form-actions">
+                  <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
+                  <Btn color="primary" disabled={saving} onClick={async () => {
+                    setSaving(true);
+                    const net = calcNet(modalData);
+                    await db("payroll","PATCH", { ...modalData, net_salary: net }, `?id=eq.${modalData.id}`);
+                    if (emp && modalData.base_salary) {
+                      await db("employees","PATCH", {
+                        salary: modalData.base_salary,
+                        allowances: modalData.allowances || 0,
+                        bonuses: modalData.bonuses || 0,
+                        deductions: modalData.deductions || 0,
+                        tax: modalData.tax || 0,
+                        insurance: modalData.insurance || 0,
+                        net_salary: net,
+                      }, `?id=eq.${emp.id}`);
+                    }
+                    // Fast refresh — only payroll + employees, not full loadAll
+                    const [freshPay, freshEmps] = await Promise.all([
+                      db("payroll","GET",null,"?select=*&order=year.desc,month.desc"),
+                      db("employees","GET",null,"?select=*&order=name"),
+                    ]);
+                    if (freshPay) setPayroll(freshPay);
+                    if (freshEmps) setEmployees(freshEmps);
+                    setSaving(false);
+                    closeModal();
+                  }}>{saving ? <span className="spinner" /> : T("💾 Save","💾 حفظ")}</Btn>
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+
+        {/* ── Create Payslip Modal ── */}
+        <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
+          <div className="form-group">
+            <label>{T("Employee","الموظف")}</label>
+            <select value={modalData.employee_id || ""} onChange={e => {
+              const emp = employees.find(x => x.id === +e.target.value);
+              setModalData({ ...modalData, employee_id: +e.target.value, base_salary: emp?.salary||0, allowances: emp?.allowances||0, bonuses: emp?.bonuses||0, deductions: emp?.deductions||0, tax: emp?.tax||0, insurance: emp?.insurance||0 });
+            }}>
+              <option value="">{T("Select employee...","اختر الموظف...")}</option>
+              {employees.filter(e => e.status === "active").map(emp => <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>{T("Month","الشهر")}</label>
+              <select value={modalData.month || thisMonth} onChange={e => setModalData({ ...modalData, month: e.target.value })}>
+                {months.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>{T("Year","السنة")}</label>
+              <input type="number" value={modalData.year || thisYear} onChange={e => setModalData({ ...modalData, year: +e.target.value })} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+            {[
+              ["base_salary", T("Base Salary","الراتب الأساسي"), "ok"],
+              ["allowances",  T("Allowances","البدلات"), "ok"],
+              ["bonuses",     T("Bonuses","المكافآت"), "ok"],
+              ["deductions",  T("Deductions","الخصومات"), "err"],
+              ["tax",         T("Tax","الضريبة"), "err"],
+              ["insurance",   T("Insurance","التأمين"), "err"],
+              ["loan_deduction", T("Loan Deduction","خصم قرض"), "err"],
+            ].map(([k, lbl, c]) => (
+              <div key={k}>
+                <label style={{ fontSize: 12, color: `var(--${c})`, display: "block", marginBottom: 4 }}>{lbl}</label>
+                <input type="number" value={modalData[k] ?? 0}
+                  onChange={e => setModalData({ ...modalData, [k]: +e.target.value })}
+                  style={{ width: "100%", padding: "8px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 13, outline: "none" }} />
               </div>
-            )}
-            <div className="form-row">
-              <div className="form-group"><label>{T("Month","الشهر")}</label>
-                <select value={modalData.month||thisMonth} onChange={e=>setModalData({...modalData,month:e.target.value})}>
-                  {months.map(m=><option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div className="form-group"><label>{T("Year","السنة")}</label><input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} /></div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
-              {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
-                <div key={k}><label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label><input type="number" value={modalData[k]||0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})} style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} /></div>
-              ))}
-            </div>
-            <div className="net-salary-box">
-              <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
-              <div className="label">{T("Net Salary","صافي الراتب")}</div>
-            </div>
-            <div className="form-actions">
-              <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-              <Btn color="primary" disabled={saving} onClick={async()=>{
-                setSaving(true);
-                const net = calcNet(modalData);
-                const empData = employees.find(e => e.id === modalData.employee_id);
-
-                if (mtype === "createPayroll") {
-                  // Save payslip
-                  await db("payroll","POST",{...modalData, net_salary: net, status: "pending"});
-
-                  // Also update employee's base salary fields so they reflect everywhere
-                  if (empData && modalData.base_salary) {
-                    await db("employees","PATCH",{
-                      salary: modalData.base_salary,
-                      allowances: modalData.allowances || 0,
-                      bonuses: modalData.bonuses || 0,
-                      deductions: modalData.deductions || 0,
-                      tax: modalData.tax || 0,
-                      insurance: modalData.insurance || 0,
-                      net_salary: net,
-                    },`?id=eq.${empData.id}`);
-                  }
-                } else {
-                  // Edit payslip
-                  await db("payroll","PATCH",{...modalData, net_salary: net},`?id=eq.${modalData.id}`);
-
-                  // Also sync to employee record
-                  if (empData && modalData.base_salary) {
-                    await db("employees","PATCH",{
-                      salary: modalData.base_salary,
-                      allowances: modalData.allowances || 0,
-                      bonuses: modalData.bonuses || 0,
-                      deductions: modalData.deductions || 0,
-                      tax: modalData.tax || 0,
-                      insurance: modalData.insurance || 0,
-                      net_salary: net,
-                    },`?id=eq.${empData.id}`);
-                  }
-                }
-                await loadAll(); setSaving(false); closeModal();
-              }}>{saving?<span className="spinner"/>:T("Save & Sync to Employee","حفظ ومزامنة للموظف")}</Btn>
-            </div>
-          </Modal>
-        ))}
+            ))}
+          </div>
+          <div className="net-salary-box">
+            <div className="amount">{calcNet(modalData).toLocaleString()} EGP</div>
+            <div className="label">{T("Net Salary","صافي الراتب")}</div>
+          </div>
+          <div className="form-actions">
+            <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
+            <Btn color="primary" disabled={saving || !modalData.employee_id} onClick={async () => {
+              setSaving(true);
+              const net = calcNet(modalData);
+              await db("payroll","POST", { ...modalData, net_salary: net, status: "pending" });
+              const emp = employees.find(e => e.id === modalData.employee_id);
+              if (emp && modalData.base_salary) {
+                await db("employees","PATCH", {
+                  salary: modalData.base_salary,
+                  allowances: modalData.allowances || 0,
+                  bonuses: modalData.bonuses || 0,
+                  deductions: modalData.deductions || 0,
+                  tax: modalData.tax || 0,
+                  insurance: modalData.insurance || 0,
+                  net_salary: net,
+                }, `?id=eq.${emp.id}`);
+              }
+              const freshPay = await db("payroll","GET",null,"?select=*&order=year.desc,month.desc");
+              if (freshPay) setPayroll(freshPay);
+              setSaving(false);
+              closeModal();
+            }}>{saving ? <span className="spinner" /> : T("💾 Save","💾 حفظ")}</Btn>
+          </div>
+        </Modal>
       </div>
     );
   };
