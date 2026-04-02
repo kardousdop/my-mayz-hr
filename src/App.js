@@ -426,6 +426,10 @@ const css = `
 // MODAL
 // ============================================================
 function Modal({ show, onClose, title, children, width }) {
+  useEffect(() => {
+    document.body.style.overflow = show ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [show]);
   if (!show) return null;
   return (
     <div className="modal-overlay" onClick={onClose}>
