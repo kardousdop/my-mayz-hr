@@ -1239,6 +1239,12 @@ export default function App() {
   const handleClockIn = async () => {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
+    // Check if attendance tracking is disabled for this employee
+    if (currentEmployee?.track_attendance === false) {
+      alert(T("Attendance tracking is disabled for your account. Contact admin.", "تسجيل الحضور معطّل لحسابك. تواصل مع المشرف."));
+      return;
+    }
+
     const clockTime = new Date();
     const day = clockTime.getDay();
     const workMode = currentEmployee?.work_mode
@@ -2070,6 +2076,12 @@ export default function App() {
           {/* Payment Company Info */}
           <div style={{ background: "var(--infob)", border: "1px solid var(--info)", borderRadius: 8, padding: 14, marginBottom: 4 }}>
             <div style={{ fontSize: 12, color: "var(--info)", fontWeight: 700, marginBottom: 10 }}>💳 {T("Payment Company Info", "بيانات شركة الدفع")}</div>
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 12 }}>👤 {T("dopay Official Name", "الاسم الرسمي في dopay")}</label>
+              <input value={modalData.dopay_full_name || ""}
+                onChange={e => setModalData({ ...modalData, dopay_full_name: e.target.value })}
+                placeholder={T("Full name exactly as registered in dopay", "الاسم الكامل كما هو مسجل في dopay")} />
+            </div>
             <div className="form-row">
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>{T("Payment Company ID", "كود شركة الدفع")}</label>
@@ -2078,6 +2090,23 @@ export default function App() {
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>{T("Payment Mobile", "موبايل شركة الدفع")}</label>
                 <input value={modalData.payment_mobile || ""} onChange={e => setModalData({ ...modalData, payment_mobile: e.target.value })} placeholder="+201XXXXXXXXX" />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>🪪 {T("National ID", "الرقم القومي")}</label>
+                <input value={modalData.national_id || ""}
+                  onChange={e => setModalData({ ...modalData, national_id: e.target.value })}
+                  placeholder="e.g. 29xxxxxxxxxx" style={{ fontFamily: "monospace" }} />
+              </div>
+              <div className="form-group" style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 22 }}>
+                <input type="checkbox" id="track_att"
+                  checked={modalData.track_attendance !== false}
+                  onChange={e => setModalData({ ...modalData, track_attendance: e.target.checked })}
+                  style={{ width: 18, height: 18 }} />
+                <label htmlFor="track_att" style={{ cursor: "pointer", fontSize: 13 }}>
+                  📋 {T("Track Attendance", "تتبع الحضور")}
+                </label>
               </div>
             </div>
           </div>
@@ -2142,6 +2171,9 @@ export default function App() {
                 approved_locations: JSON.stringify(locs),
                 payment_id: modalData.payment_id || null,
                 payment_mobile: modalData.payment_mobile || null,
+                dopay_full_name: modalData.dopay_full_name || null,
+                national_id: modalData.national_id || null,
+                track_attendance: modalData.track_attendance !== false,
                 work_mode: modalData.work_mode || "office",
               }, `?id=eq.${modalData.id}`);
               // Update shift assignment
@@ -2983,7 +3015,7 @@ export default function App() {
                   if (net <= 0) return; // skip employees with no salary
                   if (!emp.payment_id) missing.push(emp.name);
                   rows.push([
-                    emp.name || "",                           // Full Name → Payee identifier
+                    emp.dopay_full_name || emp.name || "",      // Full Name → Payee identifier
                     emp.payment_mobile || emp.phone || "",   // Mobile No.
                     emp.position || emp.role || "Employee",  // Profession
                     "",                                       // Location ID
