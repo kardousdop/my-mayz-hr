@@ -1041,7 +1041,7 @@ export default function App() {
             try { new Notification("myMayz HR — Sign In Reminder 🟢", {
               body: `You are at ${matched.name}. Don't forget to sign in!`,
               icon: "/favicon.ico",
-            });
+            }); } catch(e) {}
           }
         }
       }
@@ -1054,7 +1054,7 @@ export default function App() {
             try { new Notification("myMayz HR — Sign Out Reminder 🔴", {
               body: "You have left your work location. Don't forget to sign out!",
               icon: "/favicon.ico",
-            });
+            }); } catch(e) {}
           }
         }
       }
