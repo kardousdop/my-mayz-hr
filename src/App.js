@@ -2176,12 +2176,11 @@ export default function App() {
                 approved_locations: JSON.stringify(locs),
                 payment_id: modalData.payment_id || null,
                 payment_mobile: modalData.payment_mobile || null,
-dopay_full_name: modalData.dopay_full_name || null,
+                dopay_full_name: modalData.dopay_full_name || null,
                 national_id: modalData.national_id || null,
                 dopay_mobile: modalData.dopay_mobile || null,
                 payment_method: modalData.payment_method || "dopay",
                 track_attendance: modalData.track_attendance !== false,
-                work_mode: modalData.work_mode || "office",
                 work_mode: modalData.work_mode || "office",
               }, `?id=eq.${modalData.id}`);
               // Update shift assignment
