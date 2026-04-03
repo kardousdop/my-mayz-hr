@@ -355,7 +355,7 @@ const css = `
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.5)}}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes slideIn{from{transform:translateX(-8px);opacity:0}to{transform:translateX(0);opacity:1}}
-  .fade-in{animation:fadeIn 0.25s ease both;animation-iteration-count:1}
+  .fade-in{animation:fadeIn 0.25s ease forwards}
   .spinner{display:inline-block;width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--acc);border-radius:50%;animation:spin 0.7s linear infinite}
 
   /* ── LIVE INDICATOR ── */
@@ -427,10 +427,6 @@ const css = `
 // MODAL
 // ============================================================
 function Modal({ show, onClose, title, children, width }) {
-  useEffect(() => {
-    document.body.style.overflow = show ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [show]);
   if (!show) return null;
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
