@@ -441,7 +441,8 @@ function Modal({ show, onClose, title, children, width }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+        document.body
   );
 }
 
