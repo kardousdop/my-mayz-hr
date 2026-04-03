@@ -355,7 +355,7 @@ const css = `
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.5)}}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes slideIn{from{transform:translateX(-8px);opacity:0}to{transform:translateX(0);opacity:1}}
-  .fade-in{animation:fadeIn 0.25s ease forwards}
+  .fade-in{animation:fadeIn 0.25s ease both;animation-iteration-count:1}
   .spinner{display:inline-block;width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--acc);border-radius:50%;animation:spin 0.7s linear infinite}
 
   /* ── LIVE INDICATOR ── */
@@ -1488,7 +1488,7 @@ export default function App() {
       });
 
     return (
-      <div className="fade-in">
+      <div>
         {/* Clickable stat cards */}
         <div className="stats-grid">
           {[
@@ -1639,7 +1639,7 @@ export default function App() {
     const calcNet = d => (d.base_salary || d.salary || 0) + (d.allowances || 0) + (d.bonuses || 0) - (d.deductions || 0) - (d.tax || 0) - (d.insurance || 0);
 
     return (
-      <div className="fade-in">
+      <div>
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
           <div className="search-bar" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
             <span className="search-icon">🔍</span>
@@ -2483,7 +2483,7 @@ export default function App() {
     };
 
     return (
-      <div className="fade-in">
+      <div>
         <div className="tab-bar">
           {[
             { id: "clockin", label: T("🕐 Sign In / Sign Out", "🕐 تسجيل الحضور / الانصراف") },
@@ -2974,7 +2974,7 @@ export default function App() {
     const pendingCount = thisMonthPayroll.filter(p => p.status === "pending").length;
 
     return (
-      <div className="fade-in">
+      <div>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
@@ -3270,7 +3270,7 @@ export default function App() {
     const myId = currentEmployee?.id;
     const visibleLoans = role === "employee" ? loans.filter(l => l.employee_id === myId) : loans;
     return (
-    <div className="fade-in">
+    <div>
       <div className="card-header" style={{ marginBottom: 20 }}>
         <div className="card-title">💳 {T("Employee Loans", "قروض الموظفين")}</div>
         {(role === "admin" || role === "hr" || role === "accountant") && (
@@ -3445,7 +3445,7 @@ export default function App() {
     const canRequest = true; // everyone can request for themselves
 
     return (
-      <div className="fade-in">
+      <div>
         <div className="tab-bar">
           {[
             { id: "manage", label: T("👔 All Requests", "👔 جميع الطلبات") + (pendingEx.length + pendingLv.length + pendingLn.length > 0 ? ` (${pendingEx.length + pendingLv.length + pendingLn.length})` : ""), show: canManage },
@@ -4309,7 +4309,7 @@ export default function App() {
     const barMax = Math.max(...lateByMonth.map(m => m.count), 1);
 
     return (
-      <div className="fade-in">
+      <div>
         {/* Summary KPIs */}
         <div className="stats-grid" style={{ marginBottom: 24 }}>
           {[
@@ -4504,7 +4504,7 @@ export default function App() {
     const daysAr = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 
     return (
-      <div className="fade-in">
+      <div>
         <div className="card-header" style={{ marginBottom: 20 }}>
           <div className="card-title">🕐 {T("Shift Management", "إدارة المناوبات")}</div>
           {role === "admin" && (
