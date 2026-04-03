@@ -441,8 +441,7 @@ function Modal({ show, onClose, title, children, width }) {
         </div>
         {children}
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }
 
@@ -945,6 +944,10 @@ export default function App() {
   const [clockOutDone, setClockOutDone] = useState(false);
   const [clockOutVerifying, setClockOutVerifying] = useState(false);
   const [signup, setSignup] = useState(false);
+  const [payrollMonth, setPayrollMonth] = useState(() => {
+    const d = new Date();
+    return { month: ["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()], year: d.getFullYear() };
+  });
 
   // Notification settings — stored in localStorage
   const [notifSettings, setNotifSettings] = useState(() => {
@@ -2959,14 +2962,12 @@ dopay_full_name: modalData.dopay_full_name || null,
     const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const calcNet = d => (Number(d.base_salary)||0) + (Number(d.allowances)||0) + (Number(d.bonuses)||0) - (Number(d.deductions)||0) - (Number(d.tax)||0) - (Number(d.insurance)||0) - (Number(d.loan_deduction)||0);
 
-    // For employee role — show only their own payslips
     const myPayroll = role === "employee"
       ? payroll.filter(p => p.employee_id === currentEmployee?.id)
       : payroll;
 
-    // Summary stats
-    const thisMonth = months[now.getMonth()];
-    const thisYear = now.getFullYear();
+    const thisMonth = payrollMonth.month;
+    const thisYear = payrollMonth.year;
     const thisMonthPayroll = myPayroll.filter(p => p.month === thisMonth && p.year === thisYear);
     const totalNet = thisMonthPayroll.reduce((s, p) => s + (Number(p.net_salary) || calcNet(p)), 0);
     const paidCount = thisMonthPayroll.filter(p => p.status === "paid").length;
@@ -2976,12 +2977,24 @@ dopay_full_name: modalData.dopay_full_name || null,
       <div className="fade-in">
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
-            <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
+              <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select value={thisMonth} onChange={e => setPayrollMonth(prev => ({ ...prev, month: e.target.value }))}
+                style={{ padding: "8px 14px", background: "var(--card2)", border: "2px solid var(--acc)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                {months.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select value={thisYear} onChange={e => setPayrollMonth(prev => ({ ...prev, year: +e.target.value }))}
+                style={{ padding: "8px 14px", background: "var(--card2)", border: "2px solid var(--acc)", borderRadius: 8, color: "var(--t1)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
           </div>
           {(role === "admin" || role === "hr") && (
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Btn color="primary" onClick={async () => {
                 // Auto-generate payslips for all active employees this month
                 const activeEmps = employees.filter(e => e.status === "active");
@@ -3003,6 +3016,20 @@ dopay_full_name: modalData.dopay_full_name || null,
                 if (created > 0) alert(T(`✅ Generated ${created} payslips for ${thisMonth} ${thisYear}`, `✅ تم إنشاء ${created} مسير رواتب لـ ${thisMonth} ${thisYear}`));
                 else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
               }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
+
+              {pendingCount > 0 && (
+                <Btn color="success" onClick={async () => {
+                  if (!window.confirm(T(
+                    `Pay ALL ${pendingCount} pending employees for ${thisMonth} ${thisYear}?\n\nTotal: ${totalNet.toLocaleString()} EGP`,
+                    `دفع كل ${pendingCount} موظف لـ ${thisMonth} ${thisYear}؟\n\nالإجمالي: ${totalNet.toLocaleString()} جنيه`
+                  ))) return;
+                  for (const p of thisMonthPayroll.filter(x => x.status === "pending")) {
+                    await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`);
+                  }
+                  await loadAll();
+                  alert(T(`✅ ${pendingCount} employees marked as paid!`, `✅ تم تعيين ${pendingCount} موظف كمدفوع!`));
+                }}>✅ {T("Pay All", "دفع الكل")} ({pendingCount})</Btn>
+              )}
               <Btn color="success" onClick={() => {
                 // Get last day of current month as disbursement date
                 const disbDate = new Date(thisYear, new Date().getMonth() + 1, 0);
@@ -3060,9 +3087,9 @@ dopay_full_name: modalData.dopay_full_name || null,
         {role !== "employee" && (
           <div className="stats-grid" style={{ marginBottom: 20 }}>
             {[
-              { icon: "💰", color: "green", value: totalNet.toLocaleString() + " EGP", label: T("Total Payroll This Month", "إجمالي الرواتب هذا الشهر") },
-              { icon: "✅", color: "green", value: paidCount, label: T("Paid", "مدفوع") },
-              { icon: "⏳", color: "yellow", value: pendingCount, label: T("Pending Payment", "في انتظار الدفع") },
+              { icon: "💰", color: "green", value: totalNet.toLocaleString() + " EGP", label: `${T("Total","إجمالي")} ${thisMonth} ${thisYear}` },
+              { icon: "✅", color: "green", value: paidCount, label: `${T("Paid","مدفوع")} — ${thisMonth}` },
+              { icon: "⏳", color: "yellow", value: pendingCount, label: `${T("Pending","معلق")} — ${thisMonth}` },
               { icon: "👥", color: "blue", value: employees.filter(e => e.status === "active").length, label: T("Active Employees", "موظفون نشطون") },
             ].map((s, i) => (
               <div className="stat-card" key={i}>
@@ -3130,6 +3157,16 @@ dopay_full_name: modalData.dopay_full_name || null,
                             <div style={{ display: "flex", gap: 6 }}>
                               {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>}
                               {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>}
+                              {p.status === "paid" && role === "admin" && (
+                                <Btn size="sm" color="outline" style={{ color:"var(--warn)", borderColor:"var(--warn)" }}
+                                  onClick={async () => {
+                                    const emp = employees.find(e => e.id === p.employee_id);
+                                    if (window.confirm(T(`↩️ Undo payment for ${emp?.name} (${p.month} ${p.year})?`, `↩️ إلغاء دفع ${emp?.name} (${p.month} ${p.year})؟`))) {
+                                      await db("payroll","PATCH",{ status:"pending", paid_at: null },`?id=eq.${p.id}`);
+                                      loadAll();
+                                    }
+                                  }}>↩️ {T("Unpay","إلغاء")}</Btn>
+                              )}
                               {role === "admin" && <Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this payslip?","حذف مسير الراتب؟"))){ await db("payroll","DELETE",null,`?id=eq.${p.id}`); loadAll(); } }}>🗑️</Btn>}
                             </div>
                           </td>
