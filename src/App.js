@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 
 // ============================================================
 // SUPABASE
@@ -427,12 +426,8 @@ const css = `
 // MODAL
 // ============================================================
 function Modal({ show, onClose, title, children, width }) {
-  useEffect(() => {
-    document.body.style.overflow = show ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [show]);
   if (!show) return null;
-  return createPortal(
+  return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal fade-in" style={width ? { width } : {}} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -441,8 +436,7 @@ function Modal({ show, onClose, title, children, width }) {
         </div>
         {children}
       </div>
-    </div>,
-        document.body
+    </div>
   );
 }
 
@@ -945,10 +939,6 @@ export default function App() {
   const [clockOutDone, setClockOutDone] = useState(false);
   const [clockOutVerifying, setClockOutVerifying] = useState(false);
   const [signup, setSignup] = useState(false);
-  const [payrollMonth, setPayrollMonth] = useState(() => {
-    const d = new Date();
-    return { month: ["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()], year: d.getFullYear() };
-  });
 
   // Notification settings — stored in localStorage
   const [notifSettings, setNotifSettings] = useState(() => {
@@ -1038,11 +1028,11 @@ export default function App() {
         if (now - lastNotifTime > cooldown) {
           lastNotifTime = now;
           // Browser notification
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            try { new Notification("myMayz HR — Sign In Reminder 🟢", {
+          if (Notification.permission === "granted") {
+            new Notification("myMayz HR — Sign In Reminder 🟢", {
               body: `You are at ${matched.name}. Don't forget to sign in!`,
               icon: "/favicon.ico",
-            }); } catch(e) {}
+            });
           }
         }
       }
@@ -1051,22 +1041,20 @@ export default function App() {
         lastState = "outside";
         if (now - lastNotifTime > cooldown) {
           lastNotifTime = now;
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            try { new Notification("myMayz HR — Sign Out Reminder 🔴", {
+          if (Notification.permission === "granted") {
+            new Notification("myMayz HR — Sign Out Reminder 🔴", {
               body: "You have left your work location. Don't forget to sign out!",
               icon: "/favicon.ico",
-            }); } catch(e) {}
+            });
           }
         }
       }
     };
 
     // Request notification permission once
-    try {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-    } catch(e) {}
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
 
     const watchId = navigator.geolocation.watchPosition(
       checkProximity,
@@ -1252,6 +1240,10 @@ export default function App() {
     setGpsErr(""); setPhotoErr(""); setGpsOk(false); setPhotoOk(false); setGpsLoc(null); setPhoto(null);
 
     // Check if attendance tracking is disabled for this employee
+    if (currentEmployee?.track_attendance === false) {
+      alert(T("Attendance tracking is disabled for your account. Contact admin.", "تسجيل الحضور معطّل لحسابك. تواصل مع المشرف."));
+      return;
+    }
 
     const clockTime = new Date();
     const day = clockTime.getDay();
@@ -1626,13 +1618,59 @@ export default function App() {
             </table>
           </div>
         </div>
+
+        {/* Absent Today — employees who should be at work but haven't signed in */}
+        {(role === "admin" || role === "hr") && (() => {
+          const now = new Date();
+          const dayNum = now.getDay();
+          const currentHour = now.getHours() * 60 + now.getMinutes();
+          const todaySignedIds = new Set(todayAtt.map(a => a.employee_id));
+
+          const absentEmployees = employees.filter(e => {
+            if (e.status !== "active") return false;
+            if (todaySignedIds.has(e.id)) return false; // already signed in
+            const es = empShifts.find(x => x.employee_id === e.id);
+            const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+            if (!shift) return false;
+            // Skip if today is an off day for this shift
+            const offDays = (() => { try { return JSON.parse(shift.off_days || "[]"); } catch { return []; } })();
+            if (offDays.includes(dayNum)) return false;
+            // Only flag after shift start + grace period
+            const [sh, sm] = (shift.start_time || "09:00").split(":").map(Number);
+            const shiftStartMin = sh * 60 + sm + (shift.grace_minutes || 15);
+            return currentHour >= shiftStartMin;
+          });
+
+          if (!absentEmployees.length) return null;
+          return (
+            <div className="card" style={{ border: "1px solid var(--err)", marginTop: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 20 }}>🔴</span>
+                <div className="card-title" style={{ color: "var(--err)", margin: 0 }}>
+                  {T("Absent Today","غائبون اليوم")} — {absentEmployees.length} {T("employees haven't signed in","موظف لم يسجل حضوره")}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {absentEmployees.map((emp, i) => {
+                  const es = empShifts.find(x => x.employee_id === emp.id);
+                  const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "var(--errb)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10 }}>
+                      <div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{emp.avatar || emp.name?.substring(0,2)}</div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{emp.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--t3)" }}>{shift ? `${shift.name} · ${shift.start_time}` : emp.employee_code}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };
-
-  // ============================================================
-  // EMPLOYEES
-  // ============================================================
   const renderEmployees = () => {
     const filtered = employees.filter(e =>
       (e.name || "").toLowerCase().includes(searchQ.toLowerCase()) ||
@@ -2179,12 +2217,9 @@ export default function App() {
                 approved_locations: JSON.stringify(locs),
                 payment_id: modalData.payment_id || null,
                 payment_mobile: modalData.payment_mobile || null,
-dopay_full_name: modalData.dopay_full_name || null,
+                dopay_full_name: modalData.dopay_full_name || null,
                 national_id: modalData.national_id || null,
-                dopay_mobile: modalData.dopay_mobile || null,
-                payment_method: modalData.payment_method || "dopay",
                 track_attendance: modalData.track_attendance !== false,
-                work_mode: modalData.work_mode || "office",
                 work_mode: modalData.work_mode || "office",
               }, `?id=eq.${modalData.id}`);
               // Update shift assignment
@@ -2722,7 +2757,131 @@ dopay_full_name: modalData.dopay_full_name || null,
 
         {attTab === "reports" && (
           <div>
-            {/* Summary Stats */}
+            {/* Flexible Shift Analysis — admin only */}
+            {(role === "admin" || role === "hr") && (() => {
+              const flexEmployees = employees.filter(e => {
+                const es = empShifts.find(x => x.employee_id === e.id);
+                const sh = es ? shifts.find(s => s.id === es.shift_id) : null;
+                return sh?.is_flexible;
+              });
+              if (!flexEmployees.length) return null;
+
+              const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+              const curMonth = reportFilter.month || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
+              const monthName = months[parseInt(curMonth.split("-")[1])-1];
+              const yr = parseInt(curMonth.split("-")[0]);
+
+              return (
+                <div className="card" style={{ marginBottom: 20, border: "1px solid var(--acc)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+                    <div className="card-title" style={{ margin: 0 }}>🕐 {T("Flexible Shift Analysis","تحليل الوردية المرنة")} — {monthName} {yr}</div>
+                    <span style={{ fontSize: 11, color: "var(--t3)", marginLeft: "auto" }}>
+                      {T("Based on 26 working days / month","بناءً على 26 يوم عمل / شهر")}
+                    </span>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table>
+                      <thead><tr>
+                        <th>{T("Employee","الموظف")}</th>
+                        <th>{T("Shift","الوردية")}</th>
+                        <th>{T("Days Worked","أيام العمل")}</th>
+                        <th>{T("Day Off","يوم الراحة")}</th>
+                        <th>{T("Required Hours","الساعات المطلوبة")}</th>
+                        <th>{T("Actual Hours","الساعات الفعلية")}</th>
+                        <th>{T("Overtime","إضافي")}</th>
+                        <th>{T("Short","ناقص")}</th>
+                        <th>{T("Overtime Pay","أجر إضافي")}</th>
+                        <th>{T("Action","إجراء")}</th>
+                      </tr></thead>
+                      <tbody>
+                        {flexEmployees.map((emp, i) => {
+                          const es = empShifts.find(x => x.employee_id === emp.id);
+                          const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                          const minHours = shift?.min_hours || 8;
+                          const salary = emp.salary || 0;
+                          const hourlyRate = salary / (26 * minHours);
+                          const overtimeRate = hourlyRate * 2; // x2 per regulation
+
+                          // Get this employee's attendance for the selected month
+                          const empAtt = attendance.filter(a =>
+                            a.employee_id === emp.id &&
+                            a.date?.startsWith(curMonth) &&
+                            a.status !== "on_leave"
+                          );
+
+                          const daysWorked = empAtt.length;
+                          const totalHrs = empAtt.reduce((s, a) => s + (Number(a.hours_worked)||0), 0);
+                          const requiredHrs = daysWorked * minHours;
+                          const overtime = Math.max(0, totalHrs - requiredHrs);
+                          const short = Math.max(0, requiredHrs - totalHrs);
+                          const overtimePay = overtime * overtimeRate;
+
+                          // Detect day off pattern (most common absent weekday)
+                          const dayCount = [0,0,0,0,0,0,0];
+                          empAtt.forEach(a => { const d = new Date(a.date).getDay(); dayCount[d]++; });
+                          const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                          // The most missing day in the month
+                          const workDaysInMonth = empAtt.map(a => new Date(a.date).getDay());
+                          const allDays = [0,1,2,3,4,5,6];
+                          const missingDays = allDays.map(d => ({
+                            day: d,
+                            count: workDaysInMonth.filter(x => x === d).length
+                          })).sort((a,b) => a.count - b.count);
+                          const likelyDayOff = missingDays[0]?.count === 0 ? dayNames[missingDays[0].day] : "—";
+
+                          const shortBadge = short > 0;
+                          const overtimeBadge = overtime > 0;
+
+                          return (
+                            <tr key={i} style={{ background: shortBadge ? "rgba(239,68,68,0.03)" : "" }}>
+                              <td><div className="emp-row">
+                                <div className="emp-avatar" style={{width:28,height:28,fontSize:10}}>{emp.avatar||emp.name?.substring(0,2)}</div>
+                                <div style={{fontSize:13,fontWeight:600}}>{emp.name}</div>
+                              </div></td>
+                              <td style={{fontSize:12,color:"var(--acc)"}}>{shift?.name}</td>
+                              <td style={{textAlign:"center"}}>{daysWorked}</td>
+                              <td style={{textAlign:"center",color:"var(--warn)",fontWeight:600}}>{likelyDayOff}</td>
+                              <td style={{textAlign:"center"}}>{requiredHrs.toFixed(1)}h</td>
+                              <td style={{textAlign:"center",fontWeight:600,color: shortBadge ? "var(--err)" : overtimeBadge ? "var(--ok)" : "var(--t1)"}}>{totalHrs.toFixed(1)}h</td>
+                              <td style={{textAlign:"center",color:"var(--ok)",fontWeight:overtimeBadge?700:400}}>{overtimeBadge ? `+${overtime.toFixed(1)}h` : "—"}</td>
+                              <td style={{textAlign:"center",color:"var(--err)",fontWeight:shortBadge?700:400}}>{shortBadge ? `⚠️ -${short.toFixed(1)}h` : "—"}</td>
+                              <td style={{textAlign:"center",color:"var(--ok)",fontWeight:700}}>{overtimeBadge ? `+${overtimePay.toFixed(0)} EGP` : "—"}</td>
+                              <td>
+                                {overtimeBadge && (
+                                  <Btn size="sm" color="success" onClick={async () => {
+                                    if (!window.confirm(`Add overtime allowance of ${overtimePay.toFixed(0)} EGP to ${emp.name}?\n\n${overtime.toFixed(1)}h × ${overtimeRate.toFixed(2)} EGP/h`)) return;
+                                    const existingPay = payroll.find(p => p.employee_id === emp.id && p.month === monthName && p.year === yr);
+                                    if (existingPay) {
+                                      await db("payroll","PATCH",{
+                                        bonuses: (Number(existingPay.bonuses)||0) + overtimePay,
+                                        net_salary: (Number(existingPay.net_salary)||0) + overtimePay,
+                                        notes: `${existingPay.notes||""} | Overtime: +${overtime.toFixed(1)}h = +${overtimePay.toFixed(0)} EGP`.trim()
+                                      },`?id=eq.${existingPay.id}`);
+                                    } else {
+                                      const net = (emp.salary||0)+(emp.allowances||0)+(emp.bonuses||0)+overtimePay-(emp.deductions||0)-(emp.tax||0)-(emp.insurance||0);
+                                      await db("payroll","POST",{employee_id:emp.id,month:monthName,year:yr,base_salary:emp.salary||0,allowances:emp.allowances||0,bonuses:(emp.bonuses||0)+overtimePay,deductions:emp.deductions||0,tax:emp.tax||0,insurance:emp.insurance||0,net_salary:net,status:"pending",notes:`Overtime: +${overtime.toFixed(1)}h = +${overtimePay.toFixed(0)} EGP`});
+                                    }
+                                    await loadAll();
+                                    alert(`✅ Overtime allowance of ${overtimePay.toFixed(0)} EGP added to payroll.`);
+                                  }}>
+                                    ➕ {T("Add to Payroll","أضف للراتب")}
+                                  </Btn>
+                                )}
+                                {shortBadge && <span className="badge red">⚠️ {T("Short","ناقص")}</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{fontSize:11,color:"var(--t3)",marginTop:10}}>
+                    💡 {T("Overtime rate = hourly rate × 2 (per regulation). Hourly rate = salary ÷ (26 days × shift hours).",
+                         "أجر الإضافي = الأجر الساعي × 2 (حسب اللوائح). الأجر الساعي = الراتب ÷ (26 يوم × ساعات الوردية).")}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="stats-grid" style={{ marginBottom: 20 }}>
               {[
                 { label: T("Present", "حاضر"), value: stats.present, color: "green" },
@@ -2818,6 +2977,7 @@ dopay_full_name: modalData.dopay_full_name || null,
               <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div className="card-title">📋 {T("Attendance Records", "سجلات الحضور")} ({filtered.length})</div>
                 {(role === "admin" || role === "hr" || role === "accountant") && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Btn color="success" size="sm" onClick={() => {
                     // Build CSV data
                     const headers = ["Date","Employee Code","Employee Name","Shift","Check In","Check Out","Hours Worked","Location","GPS Lat","GPS Lng","Status","Notes"];
@@ -2861,6 +3021,62 @@ dopay_full_name: modalData.dopay_full_name || null,
                   }}>
                     📥 {T("Export Excel", "تصدير Excel")}
                   </Btn>
+                  {/* Late Deduction Calculator */}
+                  <Btn color="warning" size="sm" onClick={async () => {
+                    const lateRecs = filtered.filter(a => a.status === "late" || a.status === "very_late");
+                    if (!lateRecs.length) { alert(T("No late records in current filter.","لا توجد سجلات تأخير في الفلتر الحالي.")); return; }
+
+                    const deductions = [];
+                    lateRecs.forEach(a => {
+                      const emp = employees.find(e => e.id === a.employee_id);
+                      const es = empShifts.find(x => x.employee_id === a.employee_id);
+                      const shift = es ? shifts.find(s => s.id === es.shift_id) : null;
+                      if (!shift || !a.check_in) return;
+                      const [sh, sm] = shift.start_time.split(":").map(Number);
+                      const shiftMinutes = sh * 60 + sm;
+                      const checkInTime = new Date(a.check_in);
+                      const checkInMinutes = checkInTime.getHours() * 60 + checkInTime.getMinutes();
+                      let lateBy = checkInMinutes - shiftMinutes;
+                      if (shift.is_night_shift && lateBy < -600) lateBy += 1440;
+                      if (lateBy <= 0) return;
+                      const dailySalary = (emp?.salary || 0) / 26;
+                      let deductDays = 0, rule = "";
+                      if (lateBy <= 30)       { deductDays = 0;    rule = T("≤30 min — No deduction","≤30 دقيقة — لا خصم"); }
+                      else if (lateBy <= 60)  { deductDays = 0.25; rule = T("30–60 min — ¼ day","30–60 دقيقة — ¼ يوم"); }
+                      else if (lateBy <= 120) { deductDays = 0.5;  rule = T("1–2 hrs — ½ day","1–2 ساعة — ½ يوم"); }
+                      else if (lateBy <= 180) { deductDays = 1;    rule = T("2–3 hrs — 1 day","2–3 ساعات — يوم كامل"); }
+                      else                    { deductDays = 2;    rule = T(">3 hrs — 2 days",">3 ساعات — يومان"); }
+                      if (deductDays > 0) deductions.push({ emp, a, lateBy, deductDays, rule, amount: dailySalary * deductDays });
+                    });
+
+                    if (!deductions.length) { alert(T("No deductions needed (all delays ≤30 min).","لا توجد خصومات (جميع التأخيرات ≤30 دقيقة).")); return; }
+
+                    const summary = deductions.map(d => `${d.emp?.name} · ${d.a.date} · ${d.lateBy}min · ${d.rule} · -${d.amount.toFixed(0)} EGP`).join("\n");
+                    const total = deductions.reduce((s, d) => s + d.amount, 0);
+                    if (!window.confirm(`${T("Late Deductions to Apply:","خصومات التأخير المقترحة:")}\n\n${summary}\n\n${T("Total:","الإجمالي:")} -${total.toFixed(0)} EGP\n\n${T("Apply to payroll?","تطبيق على مسير الرواتب؟")}`)) return;
+
+                    const monthsArr = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                    let applied = 0;
+                    for (const d of deductions) {
+                      const dt = new Date(d.a.date);
+                      const mo = monthsArr[dt.getMonth()];
+                      const yr = dt.getFullYear();
+                      const existing = payroll.find(p => p.employee_id === d.emp?.id && p.month === mo && p.year === yr);
+                      if (existing) {
+                        await db("payroll","PATCH",{
+                          deductions: (Number(existing.deductions)||0) + d.amount,
+                          net_salary: (Number(existing.net_salary)||0) - d.amount,
+                          notes: `${existing.notes||""} | Late ${d.a.date}: -${d.amount.toFixed(0)} EGP (${d.rule})`.trim()
+                        },`?id=eq.${existing.id}`);
+                        applied++;
+                      }
+                    }
+                    await loadAll();
+                    alert(T(`✅ Applied ${applied} deductions to payroll.`,`✅ تم تطبيق ${applied} خصومات على مسير الرواتب.`));
+                  }}>
+                    ⚖️ {T("Late Deductions","خصومات التأخير")}
+                  </Btn>
+                  </div>
                 )}
               </div>
               <div style={{ overflowX: "auto" }}>
@@ -2970,8 +3186,9 @@ dopay_full_name: modalData.dopay_full_name || null,
       ? payroll.filter(p => p.employee_id === currentEmployee?.id)
       : payroll;
 
-    const thisMonth = payrollMonth.month;
-    const thisYear = payrollMonth.year;
+    // Summary stats
+    const thisMonth = months[now.getMonth()];
+    const thisYear = now.getFullYear();
     const thisMonthPayroll = myPayroll.filter(p => p.month === thisMonth && p.year === thisYear);
     const totalNet = thisMonthPayroll.reduce((s, p) => s + (Number(p.net_salary) || calcNet(p)), 0);
     const paidCount = thisMonthPayroll.filter(p => p.status === "paid").length;
@@ -2981,21 +3198,12 @@ dopay_full_name: modalData.dopay_full_name || null,
       <div className="fade-in">
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-            <div style={{ fontSize:18, fontWeight:700 }}>💰 {T("Payroll Management","إدارة الرواتب")}</div>
-            <div style={{ display:"flex", gap:8 }}>
-              <select value={thisMonth} onChange={e=>setPayrollMonth(p=>({...p,month:e.target.value}))}
-                style={{padding:"8px 16px",background:"var(--bg2)",border:"2px solid var(--acc)",borderRadius:8,color:"var(--t1)",fontFamily:"inherit",fontSize:15,fontWeight:700,cursor:"pointer",outline:"none"}}>
-                {months.map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-              <select value={thisYear} onChange={e=>setPayrollMonth(p=>({...p,year:+e.target.value}))}
-                style={{padding:"8px 16px",background:"var(--bg2)",border:"2px solid var(--acc)",borderRadius:8,color:"var(--t1)",fontFamily:"inherit",fontSize:15,fontWeight:700,cursor:"pointer",outline:"none"}}>
-                {[now.getFullYear()-1,now.getFullYear(),now.getFullYear()+1].map(y=><option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>💰 {T("Payroll Management", "إدارة الرواتب")}</div>
+            <div style={{ fontSize: 13, color: "var(--t3)", marginTop: 4 }}>{thisMonth} {thisYear}</div>
           </div>
           {(role === "admin" || role === "hr") && (
-            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <Btn color="primary" onClick={async () => {
                 // Auto-generate payslips for all active employees this month
                 const activeEmps = employees.filter(e => e.status === "active");
@@ -3017,14 +3225,6 @@ dopay_full_name: modalData.dopay_full_name || null,
                 if (created > 0) alert(T(`✅ Generated ${created} payslips for ${thisMonth} ${thisYear}`, `✅ تم إنشاء ${created} مسير رواتب لـ ${thisMonth} ${thisYear}`));
                 else alert(T("All payslips already exist for this month.", "جميع مسيرات الرواتب موجودة بالفعل لهذا الشهر."));
               }}>⚡ {T("Auto-Generate This Month", "إنشاء تلقائي للشهر")}</Btn>
-              {pendingCount > 0 && (
-                <Btn color="success" onClick={async()=>{
-                  if(!window.confirm(T(`✅ Pay ALL ${pendingCount} pending for ${thisMonth} ${thisYear}?\nTotal: ${totalNet.toLocaleString()} EGP`,`✅ دفع ${pendingCount} موظف لـ ${thisMonth} ${thisYear}?\nالإجمالي: ${totalNet.toLocaleString()} جنيه`)))return;
-                  for(const p of thisMonthPayroll.filter(x=>x.status==="pending")){await db("payroll","PATCH",{status:"paid",paid_at:new Date().toISOString()},`?id=eq.${p.id}`);}
-                  await loadAll();
-                  alert(T(`✅ ${pendingCount} employees marked as paid!`,`✅ تم دفع ${pendingCount} موظف!`));
-                }}>✅ {T("Pay All","دفع الكل")} ({pendingCount})</Btn>
-              )}
               <Btn color="success" onClick={() => {
                 // Get last day of current month as disbursement date
                 const disbDate = new Date(thisYear, new Date().getMonth() + 1, 0);
@@ -3115,13 +3315,13 @@ dopay_full_name: modalData.dopay_full_name || null,
                 {(role === "admin" || role === "accountant") && <th>{T("Actions", "إجراءات")}</th>}
               </tr></thead>
               <tbody>
-                {thisMonthPayroll.length === 0
+                {myPayroll.length === 0
                   ? <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--t3)", padding: 40 }}>
                       <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                      <div>{T("No payslips for","لا توجد مسيرات لـ")} {thisMonth} {thisYear}</div>
+                      <div>{T("No payslips yet.", "لا توجد مسيرات رواتب بعد.")}</div>
                       {(role === "admin" || role === "hr") && <div style={{ fontSize: 13, marginTop: 8, color: "var(--t3)" }}>{T("Click 'Auto-Generate' to create payslips for all employees.", "اضغط 'إنشاء تلقائي' لإنشاء مسيرات لجميع الموظفين.")}</div>}
                     </td></tr>
-                  : thisMonthPayroll.map((p, i) => {
+                  : myPayroll.map((p, i) => {
                     const emp = employees.find(e => e.id === p.employee_id);
                     const net = Number(p.net_salary) || calcNet(p);
                     return (
@@ -3152,16 +3352,6 @@ dopay_full_name: modalData.dopay_full_name || null,
                             <div style={{ display: "flex", gap: 6 }}>
                               {role === "admin" && <Btn size="sm" color="outline" onClick={() => openModal("editPayroll", { ...p })}>✏️</Btn>}
                               {p.status === "pending" && <Btn size="sm" color="success" onClick={async () => { await db("payroll","PATCH",{ status:"paid", paid_at: new Date().toISOString() },`?id=eq.${p.id}`); loadAll(); }}>✅ {T("Pay","دفع")}</Btn>}
-                              {p.status === "paid" && role === "admin" && (
-                                <Btn size="sm" color="outline" style={{color:"var(--warn)",borderColor:"var(--warn)"}}
-                                  onClick={async()=>{
-                                    const en=employees.find(e=>e.id===p.employee_id)?.name;
-                                    if(window.confirm(T(`↩️ Undo payment for ${en}?`,`↩️ إلغاء دفع ${en}؟`))){
-                                      await db("payroll","PATCH",{status:"pending",paid_at:null},`?id=eq.${p.id}`);
-                                      loadAll();
-                                    }
-                                  }}>↩️ {T("Unpay","إلغاء")}</Btn>
-                              )}
                               {role === "admin" && <Btn size="sm" color="danger" onClick={async () => { if(window.confirm(T("Delete this payslip?","حذف مسير الراتب؟"))){ await db("payroll","DELETE",null,`?id=eq.${p.id}`); loadAll(); } }}>🗑️</Btn>}
                             </div>
                           </td>
@@ -3174,74 +3364,29 @@ dopay_full_name: modalData.dopay_full_name || null,
           </div>
         </div>
 
-        <Modal show={activeModal === "editPayroll"} onClose={closeModal} title={T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
-          {activeModal === "editPayroll" && (() => {
-            const emp = employees.find(e => e.id === modalData.employee_id);
-            const net = calcNet(modalData);
-            return (<>
-              {emp && <div className="info-box" style={{marginBottom:14}}><strong>{emp.name}</strong> — <span style={{color:"var(--t3)",fontSize:12}}>{emp.employee_code}</span></div>}
-              <div className="form-row">
-                <div className="form-group"><label>{T("Month","الشهر")}</label>
-                  <select value={modalData.month||""} onChange={e=>setModalData({...modalData,month:e.target.value})}>
-                    {months.map(m=><option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div className="form-group"><label>{T("Year","السنة")}</label>
-                  <input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
-                </div>
+        {/* Manual create/edit payslip modals */}
+        {["createPayroll","editPayroll"].map(mtype => (
+          <Modal key={mtype} show={activeModal === mtype} onClose={closeModal} title={mtype === "createPayroll" ? T("➕ Create Payslip","➕ إنشاء مسير راتب") : T("✏️ Edit Payslip","✏️ تعديل مسير الراتب")}>
+            {mtype === "createPayroll" && (
+              <div className="form-group">
+                <label>{T("Employee","الموظف")}</label>
+                <select value={modalData.employee_id||""} onChange={e => { const emp=employees.find(x=>x.id===+e.target.value); setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0}); }}>
+                  <option value="">{T("Select employee...","اختر الموظف...")}</option>
+                  {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
+                </select>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-                {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
-                  <div key={k}>
-                    <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
-                    <input type="number" value={modalData[k]??0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})}
-                      style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} />
-                  </div>
-                ))}
-              </div>
-              <div className="net-salary-box">
-                <div className="amount">{net.toLocaleString()} EGP</div>
-                <div className="label">{T("Net Salary","صافي الراتب")}</div>
-              </div>
-              <div className="form-actions">
-                <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-                <Btn color="primary" disabled={saving} onClick={async()=>{
-                  setSaving(true);
-                  await db("payroll","PATCH",{...modalData,net_salary:net},`?id=eq.${modalData.id}`);
-                  if(emp&&modalData.base_salary){await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);}
-                  const [p2,e2]=await Promise.all([db("payroll","GET",null,"?select=*&order=year.desc,month.desc"),db("employees","GET",null,"?select=*&order=name")]);
-                  if(p2)setPayroll(p2); if(e2)setEmployees(e2);
-                  setSaving(false); closeModal();
-                }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
-              </div>
-            </>);
-          })()}
-        </Modal>
-        <Modal show={activeModal === "createPayroll"} onClose={closeModal} title={T("➕ Create Payslip","➕ إنشاء مسير راتب")}>
-          {activeModal === "createPayroll" && (<>
-            <div className="form-group"><label>{T("Employee","الموظف")}</label>
-              <select value={modalData.employee_id||""} onChange={e=>{const emp=employees.find(x=>x.id===+e.target.value);setModalData({...modalData,employee_id:+e.target.value,base_salary:emp?.salary||0,allowances:emp?.allowances||0,bonuses:emp?.bonuses||0,deductions:emp?.deductions||0,tax:emp?.tax||0,insurance:emp?.insurance||0});}}>
-                <option value="">{T("Select employee...","اختر الموظف...")}</option>
-                {employees.filter(e=>e.status==="active").map(emp=><option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>)}
-              </select>
-            </div>
+            )}
             <div className="form-row">
               <div className="form-group"><label>{T("Month","الشهر")}</label>
                 <select value={modalData.month||thisMonth} onChange={e=>setModalData({...modalData,month:e.target.value})}>
                   {months.map(m=><option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <div className="form-group"><label>{T("Year","السنة")}</label>
-                <input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} />
-              </div>
+              <div className="form-group"><label>{T("Year","السنة")}</label><input type="number" value={modalData.year||thisYear} onChange={e=>setModalData({...modalData,year:+e.target.value})} /></div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
               {[["base_salary",T("Base Salary","الراتب الأساسي"),"ok"],["allowances",T("Allowances","البدلات"),"ok"],["bonuses",T("Bonuses","المكافآت"),"ok"],["deductions",T("Deductions","الخصومات"),"err"],["tax",T("Tax","الضريبة"),"err"],["insurance",T("Insurance","التأمين"),"err"],["loan_deduction",T("Loan Deduction","خصم قرض"),"err"]].map(([k,lbl,c])=>(
-                <div key={k}>
-                  <label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label>
-                  <input type="number" value={modalData[k]??0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})}
-                    style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} />
-                </div>
+                <div key={k}><label style={{fontSize:12,color:`var(--${c})`,display:"block",marginBottom:4}}>{lbl}</label><input type="number" value={modalData[k]||0} onChange={e=>setModalData({...modalData,[k]:+e.target.value})} style={{width:"100%",padding:"8px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontFamily:"inherit",fontSize:13,outline:"none"}} /></div>
               ))}
             </div>
             <div className="net-salary-box">
@@ -3250,19 +3395,49 @@ dopay_full_name: modalData.dopay_full_name || null,
             </div>
             <div className="form-actions">
               <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
-              <Btn color="primary" disabled={saving||!modalData.employee_id} onClick={async()=>{
+              <Btn color="primary" disabled={saving} onClick={async()=>{
                 setSaving(true);
-                const net=calcNet(modalData);
-                await db("payroll","POST",{...modalData,net_salary:net,status:"pending"});
-                const emp=employees.find(e=>e.id===modalData.employee_id);
-                if(emp&&modalData.base_salary){await db("employees","PATCH",{salary:modalData.base_salary,allowances:modalData.allowances||0,bonuses:modalData.bonuses||0,deductions:modalData.deductions||0,tax:modalData.tax||0,insurance:modalData.insurance||0,net_salary:net},`?id=eq.${emp.id}`);}
-                const p2=await db("payroll","GET",null,"?select=*&order=year.desc,month.desc");
-                if(p2)setPayroll(p2);
-                setSaving(false); closeModal();
-              }}>{saving?<span className="spinner"/>:T("💾 Save","💾 حفظ")}</Btn>
+                const net = calcNet(modalData);
+                const empData = employees.find(e => e.id === modalData.employee_id);
+
+                if (mtype === "createPayroll") {
+                  // Save payslip
+                  await db("payroll","POST",{...modalData, net_salary: net, status: "pending"});
+
+                  // Also update employee's base salary fields so they reflect everywhere
+                  if (empData && modalData.base_salary) {
+                    await db("employees","PATCH",{
+                      salary: modalData.base_salary,
+                      allowances: modalData.allowances || 0,
+                      bonuses: modalData.bonuses || 0,
+                      deductions: modalData.deductions || 0,
+                      tax: modalData.tax || 0,
+                      insurance: modalData.insurance || 0,
+                      net_salary: net,
+                    },`?id=eq.${empData.id}`);
+                  }
+                } else {
+                  // Edit payslip
+                  await db("payroll","PATCH",{...modalData, net_salary: net},`?id=eq.${modalData.id}`);
+
+                  // Also sync to employee record
+                  if (empData && modalData.base_salary) {
+                    await db("employees","PATCH",{
+                      salary: modalData.base_salary,
+                      allowances: modalData.allowances || 0,
+                      bonuses: modalData.bonuses || 0,
+                      deductions: modalData.deductions || 0,
+                      tax: modalData.tax || 0,
+                      insurance: modalData.insurance || 0,
+                      net_salary: net,
+                    },`?id=eq.${empData.id}`);
+                  }
+                }
+                await loadAll(); setSaving(false); closeModal();
+              }}>{saving?<span className="spinner"/>:T("Save & Sync to Employee","حفظ ومزامنة للموظف")}</Btn>
             </div>
-          </>)}
-        </Modal>
+          </Modal>
+        ))}
       </div>
     );
   };
@@ -3718,7 +3893,13 @@ dopay_full_name: modalData.dopay_full_name || null,
                       <div style={{ fontSize: 11, color: "var(--t3)" }}>🕐 {T("Submitted","قُدِّم")} {submittedAt}</div>
                     </div>
                     {canAct && (
-                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                        {/* Edit button for loans — let admin fix monthly_deduction */}
+                        {r._type === "loan" && (
+                          <Btn size="sm" color="outline" onClick={() => openModal("editRequest", { ...r, _type: r._type })}>
+                            ✏️ {T("Edit","تعديل")}
+                          </Btn>
+                        )}
                         <Btn size="sm" color="success" onClick={async () => {
                           if (r._type === "excuse") {
                             await db("excuse_requests","PATCH",{status:"approved"},`?id=eq.${r.id}`);
@@ -3975,7 +4156,48 @@ dopay_full_name: modalData.dopay_full_name || null,
             })()}
           </div>
         )}
-      </div>
+
+      {/* Edit Request Modal */}
+      <Modal show={activeModal === "editRequest"} onClose={closeModal} title={T("✏️ Edit Request", "✏️ تعديل الطلب")}>
+        {modalData._type === "loan" && (
+          <>
+            <div className="info-box" style={{ marginBottom: 12 }}>
+              💡 {T("Edit loan details before approving. The employee will see the updated values.", "عدّل تفاصيل القرض قبل الموافقة. سيرى الموظف القيم المحدّثة.")}
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>💵 {T("Loan Amount (EGP)", "مبلغ القرض")}</label>
+                <input type="number" value={modalData.amount || ""} onChange={e => setModalData({ ...modalData, amount: +e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>💸 {T("Monthly Deduction (EGP)", "الخصم الشهري")}</label>
+                <input type="number" value={modalData.monthly_deduction || ""} onChange={e => setModalData({ ...modalData, monthly_deduction: +e.target.value })} />
+              </div>
+            </div>
+            {modalData.amount > 0 && modalData.monthly_deduction > 0 && (
+              <div style={{ background: "var(--accg)", border: "1px solid var(--acc)", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 8 }}>
+                📅 {T("Duration","المدة")}: <strong>{Math.ceil(modalData.amount / modalData.monthly_deduction)}</strong> {T("months","شهراً")} &nbsp;·&nbsp;
+                {T("Total","الإجمالي")}: <strong>{(Math.ceil(modalData.amount / modalData.monthly_deduction) * modalData.monthly_deduction).toLocaleString()} EGP</strong>
+              </div>
+            )}
+            <div className="form-group">
+              <label>📝 {T("Admin Note to Employee (optional)", "ملاحظة للموظف (اختياري)")}</label>
+              <textarea rows={2} value={modalData.admin_note || ""} onChange={e => setModalData({ ...modalData, admin_note: e.target.value })}
+                placeholder={T("e.g. Monthly deduction corrected to 1000 EGP", "مثال: تم تصحيح الخصم الشهري إلى 1000 جنيه")} />
+            </div>
+            <div className="form-actions">
+              <Btn color="outline" onClick={closeModal}>{T("Cancel","إلغاء")}</Btn>
+              <Btn color="warning" disabled={saving} onClick={async () => {
+                setSaving(true);
+                await db("loans","PATCH",{ amount: modalData.amount, monthly_deduction: modalData.monthly_deduction, notes: modalData.admin_note || null },`?id=eq.${modalData.id}`);
+                await loadAll(); setSaving(false); closeModal();
+                alert(T("✅ Saved. Now approve it from the list.","✅ تم الحفظ. يمكنك الموافقة من القائمة الآن."));
+              }}>{saving ? <span className="spinner"/> : T("💾 Save & Return","💾 حفظ والعودة")}</Btn>
+            </div>
+          </>
+        )}
+      </Modal>
+    </div>
     );
   };
 
@@ -4164,7 +4386,12 @@ dopay_full_name: modalData.dopay_full_name || null,
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <span style={{ fontSize: 24 }}>{loc.icon}</span>
                 <div>
-                  <div style={{ fontWeight: 700, color: "var(--t1)", fontSize: 15 }}>{loc.name}</div>
+                  <div style={{ fontWeight: 700, color: "var(--t1)", fontSize: 15 }}>
+                    <input value={loc.name} onChange={e => {
+                      const n = [...gpsLocs]; n[i] = { ...n[i], name: e.target.value };
+                      setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                    }} style={{ background: "transparent", border: "none", borderBottom: "1px dashed var(--border)", color: "var(--t1)", fontWeight: 700, fontSize: 15, fontFamily: "inherit", outline: "none", width: "100%", padding: "2px 0" }} />
+                  </div>
                   <div style={{ fontSize: 12, color: "var(--t3)" }}>{loc.nameAr}</div>
                 </div>
                 <span className="badge green" style={{ marginLeft: "auto" }}>🎯 {(loc.radius * 1000).toFixed(0)}m</span>
@@ -4216,10 +4443,26 @@ dopay_full_name: modalData.dopay_full_name || null,
                 <span style={{ fontSize: 11, color: "var(--t3)" }}>
                   {T("Stand inside the office/location and tap this","قف داخل الموقع واضغط هذا الزر")}
                 </span>
+                {/* Delete location button */}
+                {gpsLocs.length > 1 && (
+                  <Btn size="sm" color="danger" onClick={() => {
+                    if (!window.confirm(T(`Delete "${loc.name}" location?`, `حذف موقع "${loc.name}"؟`))) return;
+                    const n = gpsLocs.filter((_, idx) => idx !== i);
+                    setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+                  }}>🗑️ {T("Delete","حذف")}</Btn>
+                )}
               </div>
             </div>
           ))}
         </div>
+
+        {/* Add new location */}
+        <Btn color="outline" style={{ marginTop: 12, width: "100%" }} onClick={() => {
+          const newLoc = { id: `loc_${Date.now()}`, name: "New Location", nameAr: "موقع جديد", lat: 30.0444, lng: 31.2357, radius: 0.5, icon: "📍" };
+          const n = [...gpsLocs, newLoc];
+          setGpsLocs(n); localStorage.setItem("mymayz_locations", JSON.stringify(n));
+        }}>➕ {T("Add New Location", "إضافة موقع جديد")}</Btn>
+
         <div className="info-box" style={{ marginTop: 14, borderColor: "var(--warn)", background: "var(--warnb)" }}>
           ⚠️ {T("Changes save automatically. Employees need to reload the app to get new coordinates.",
                  "التغييرات تُحفظ تلقائياً. يجب على الموظفين إعادة تحميل التطبيق لتطبيق الإحداثيات الجديدة.")}
